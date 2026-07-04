@@ -24,7 +24,7 @@ const PLATFORMS: Record<string, { patterns: RegExp[]; titlePattern: RegExp; imag
     imagePattern: /property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
   },
   meituan: {
-    patterns: [/meituan\.com/, /dianping\.com/],
+    patterns: [/meituan\.com/, /dianping\.com/, /dpurl\.cn/, /mtw\.so/],
     titlePattern: /property=["']og:title["'][^>]*content=["']([^"']+)["']/i,
     imagePattern: /property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
   },
