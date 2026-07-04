@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Upload, Link as LinkIcon } from 'lucide-react'
+import { X, Upload } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
 import { uploadImage, deleteImage } from '@/lib/upload'
 
