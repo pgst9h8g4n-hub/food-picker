@@ -67,6 +67,11 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
           setImageUrl(result.parsed.image_url)
         }
         setSource(result.parsed.platform)
+      } else if (result.parsed?.platform) {
+        setSource(result.parsed.platform)
+        setLinkError('已识别为' + (result.parsed.platform === 'meituan' ? '美团/大众点评' : result.parsed.platform === 'xiaohongshu' ? '小红书' : '抖音') + '链接，但页面内容需要 JS 渲染，无法自动提取标题。请手动填写。')
+      } else {
+        setLinkError('无法识别该平台链接，请手动填写')
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '识别失败'
