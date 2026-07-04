@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // 抓取页面（设置超时 10s）
+    // 抓取页面（设置超时 10s，跟随重定向）
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 10_000)
 
@@ -93,9 +93,13 @@ Deno.serve(async (req: Request) => {
           'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
+      redirect: 'follow',
       signal: controller.signal,
     })
     clearTimeout(timer)
+
+    // 获取最终 URL（重定向后的真实地址）
+    const finalUrl = response.url
 
     if (!response.ok) {
       return new Response(
@@ -118,10 +122,10 @@ Deno.serve(async (req: Request) => {
     const imageMatch = html.match(config.imagePattern)
     let imageUrl: string | null = imageMatch?.[1] || null
 
-    // 相对路径转绝对路径
+    // 相对路径转绝对路径（使用最终 URL）
     if (imageUrl && !imageUrl.startsWith('http')) {
       try {
-        const urlObj = new URL(url)
+        const urlObj = new URL(finalUrl)
         imageUrl = imageUrl.startsWith('/')
           ? urlObj.protocol + '//' + urlObj.host + imageUrl
           : urlObj.origin + '/' + imageUrl
