@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Upload, Link as LinkIcon } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
+import { uploadImage, deleteImage } from '@/lib/upload'
 
 interface AddFoodFormProps {
   onSubmit: (food: FoodInsert) => void
@@ -16,8 +17,16 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   const [price, setPrice] = useState('')
   const [rating, setRating] = useState('3')
   const [notes, setNotes] = useState('')
+  const [link, setLink] = useState('')
+  const [source, setSource] = useState<string | null>(null)
+  const [linkLoading, setLinkLoading] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
+  const [imageUrl, setImageUrl] = useState<string | null>(initialData?.image_url ?? null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  // 追踪图片在 Storage 中的路径（用于删除旧图）
+  const [imagePath, setImagePath] = useState<string | null>(null)
 
-  // 编辑模式下填充初始值
   useEffect(() => {
     if (initialData) {
       setName(initialData.name)
@@ -27,8 +36,78 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       setPrice(initialData.price?.toString() ?? '')
       setRating((initialData.rating ?? 3).toString())
       setNotes(initialData.notes ?? '')
+      setSource(initialData.source)
+      setLink(initialData.source_url ?? '')
+      if (initialData.image_url) {
+        setImageUrl(initialData.image_url)
+        // 如果是 Storage 图片，提取 path
+        const match = initialData.image_url.match(/\/food-images\/(.+)$/)
+        if (match) setImagePath(match[1])
+      }
     }
   }, [initialData])
+
+  async function handleParseLink() {
+    if (!link.trim()) return
+    setLinkLoading(true)
+    setLinkError(null)
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/parse-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: link.trim() }),
+      })
+      const result = await resp.json()
+      if (result.error) {
+        setLinkError(result.error)
+      } else if (result.parsed?.title) {
+        setName(result.parsed.title)
+        if (result.parsed.image_url) {
+          setImageUrl(result.parsed.image_url)
+        }
+        setSource(result.parsed.platform)
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '识别失败'
+      setLinkError(msg)
+    }
+    setLinkLoading(false)
+  }
+
+  async function handleImageUpload(file: File) {
+    setUploadError(null)
+    // 限制 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('图片不能超过 5MB')
+      return
+    }
+    setUploading(true)
+    try {
+      // 如果有旧的 Storage 图片，先删除
+      if (imagePath) {
+        try { await deleteImage(imagePath) } catch { /* ignore */ }
+      }
+      const url = await uploadImage(file)
+      setImageUrl(url)
+      // 提取 path
+      const match = url.match(/\/food-images\/(.+)\?/)// public URL 带 query
+      if (match) setImagePath(match[1])
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '上传失败'
+      setUploadError(msg)
+    }
+    setUploading(false)
+  }
+
+  function handleDeleteImage() {
+    if (imagePath) {
+      deleteImage(imagePath).catch(() => {})
+    }
+    setImageUrl(null)
+    setImagePath(null)
+    setUploadError(null)
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -41,11 +120,12 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       price: price ? parseInt(price) : null,
       rating: parseInt(rating),
-      source: null,
-      source_url: null,
+      source,
+      source_url: link.trim() || null,
       notes: notes.trim() || null,
+      image_url: imageUrl,
       is_eaten: false,
-      revisit: null,
+      revisit: initialData?.revisit ?? null,
     }
 
     onSubmit(food)
@@ -63,6 +143,50 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* 图片上传 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">📷 图片（可选）</label>
+            {imageUrl ? (
+              <div className="relative">
+                <img
+                  src={imageUrl}
+                  alt="预览"
+                  className="w-full h-40 object-cover rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={handleDeleteImage}
+                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <label className="block w-full h-28 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-orange-400 transition-colors">
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleImageUpload(file)
+                    e.target.value = '' // 允许重复选择同一文件
+                  }}
+                  className="hidden"
+                />
+                {uploading ? (
+                  <span className="text-sm text-gray-400">上传中...</span>
+                ) : (
+                  <span className="text-sm text-gray-400 flex items-center gap-1">
+                    <Upload size={16} /> 点击或拍照上传
+                  </span>
+                )}
+              </label>
+            )}
+            {uploadError && <p className="text-xs text-red-500 mt-1">{uploadError}</p>}
+          </div>
+
+          {/* 名称 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               店名/菜品名 <span className="text-red-500">*</span>
@@ -77,6 +201,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
             />
           </div>
 
+          {/* 城市 + 区域 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">城市</label>
@@ -100,6 +225,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
             </div>
           </div>
 
+          {/* 价格 + 评分 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">价格（元）</label>
@@ -128,6 +254,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
             </div>
           </div>
 
+          {/* 标签 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               标签（逗号分隔）
@@ -141,6 +268,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
             />
           </div>
 
+          {/* 备注 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
             <textarea
@@ -150,6 +278,31 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
               rows={2}
               placeholder="推荐菜品、个人感受..."
             />
+          </div>
+
+          {/* 链接智能识别 */}
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              🔗 来源链接（可选）
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                placeholder="粘贴小红书/抖音/美团链接"
+              />
+              <button
+                type="button"
+                onClick={handleParseLink}
+                disabled={linkLoading || !link.trim()}
+                className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-purple-600 transition-colors whitespace-nowrap"
+              >
+                {linkLoading ? '识别中...' : '识别'}
+              </button>
+            </div>
+            {linkError && <p className="text-xs text-red-500 mt-1">{linkError}</p>}
           </div>
 
           <button

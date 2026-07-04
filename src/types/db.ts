@@ -14,6 +14,7 @@ export interface Food {
   source: string | null
   source_url: string | null
   notes: string | null
+  image_url: string | null  // 美食图片 URL（Supabase Storage 或外链）
   is_eaten: boolean
   revisit: 'would' | 'wouldnt' | null  // 是否愿意二次光顾
   created_at: string

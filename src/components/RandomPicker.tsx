@@ -130,6 +130,14 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
           isSpinning ? 'animate-pulse' : ''
         }`}>
           {!isSpinning && <div className="text-5xl mb-3">🎉</div>}
+          {result.image_url && (
+            <img
+              src={result.image_url}
+              alt={result.name}
+              className="w-full h-48 object-cover rounded-xl mb-4"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          )}
           <h3 className="text-2xl font-bold text-gray-900">{result.name}</h3>
           {result.city && (
             <p className="text-sm text-gray-500 mt-1 flex items-center justify-center gap-1">
