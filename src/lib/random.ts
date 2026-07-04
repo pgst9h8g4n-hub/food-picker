@@ -67,8 +67,7 @@ export function pickRandom(foods: Food[], options: RandomOptions = {}): Food | n
 export function getWeightDistribution(foods: Food[]): Record<number, number> {
   const dist: Record<number, number> = {}
   for (let i = 1; i <= 5; i++) {
-    const ratingFoods = foods.filter((f) => f.rating === i)
-    const totalWeight = ratingFoods.reduce((sum, f) => sum + Math.pow(2, i - 1), 0)
+    const totalWeight = foods.filter((f) => f.rating === i).reduce((sum, __) => sum + Math.pow(2, i - 1), 0)
     dist[i] = totalWeight
   }
   return dist

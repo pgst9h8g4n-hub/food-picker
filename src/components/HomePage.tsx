@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, List, Sparkles, LogOut, Clock, X, Edit2 } from 'lucide-react'
+import { Plus, List, Sparkles, LogOut, Clock, X } from 'lucide-react'
 import { useAuth, useFoods, useHistory } from '@/lib/hooks'
 import FoodCard from '@/components/FoodCard'
 import AddFoodForm from '@/components/AddFoodForm'
@@ -15,7 +15,7 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
   const [showHistory, setShowHistory] = useState(false)
   const { signOut } = useAuth()
   const { foods, loading, error, fetchFoods, addFood, updateFood, deleteFood } = useFoods()
-  const { history, record: recordHistoryFunc, fetchHistory } = useHistory()
+  const { history, record: recordHistory, fetchHistory } = useHistory()
 
   useEffect(() => {
     fetchFoods()

@@ -3,11 +3,20 @@ import { supabase } from '@/lib/supabase'
 import type { Food, FoodInsert } from '@/types/db'
 
 export function useAuth() {
+  const [loading, setLoading] = useState(false)
+
+  async function signIn(email: string, password: string) {
+    setLoading(true)
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    setLoading(false)
+    return error
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
 
-  return { signOut }
+  return { signIn, signOut, loading }
 }
 
 export function useFoods() {
