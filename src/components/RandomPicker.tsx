@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Sparkles, MapPin, Tag, DollarSign, Check } from 'lucide-react'
+import { Sparkles, MapPin, Tag, DollarSign, Check, Navigation } from 'lucide-react'
 import type { Food } from '@/types/db'
 import { pickRandom } from '@/lib/random'
 
@@ -139,6 +139,16 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
             />
           )}
           <h3 className="text-2xl font-bold text-gray-900">{result.name}</h3>
+          {result.address && (
+            <a
+              href={`https://uri.amap.com/search?keyword=${encodeURIComponent(result.name + ' ' + result.address)}&callnative=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600 mt-1 flex items-center justify-center gap-1 hover:text-blue-800"
+            >
+              <Navigation size={14} /> {result.address}
+            </a>
+          )}
           {result.city && (
             <p className="text-sm text-gray-500 mt-1 flex items-center justify-center gap-1">
               <MapPin size={14} /> {result.city}

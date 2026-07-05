@@ -1,4 +1,4 @@
-import { MapPin, Tag, Trash2, Check, Edit2, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { MapPin, Tag, Trash2, Check, Edit2, ThumbsUp, ThumbsDown, Navigation } from 'lucide-react'
 import type { Food } from '@/types/db'
 
 interface FoodCardProps {
@@ -10,6 +10,14 @@ interface FoodCardProps {
 }
 
 export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit, onDelete }: FoodCardProps) {
+  // 导航链接：拼地址+店名，跳转高德地图
+  function getNavUrl() {
+    if (!food.address) return ''
+    const keyword = `${food.name} ${food.address}`.trim()
+    // 高德地图搜索导航
+    return `https://uri.amap.com/search?keyword=${encodeURIComponent(keyword)}&coordinate=116.397428,39.90923&callnative=1`
+  }
+
   return (
     <div
       className={`relative bg-white rounded-xl shadow-sm border p-4 transition-all hover:shadow-md ${
@@ -48,6 +56,18 @@ export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit,
       </div>
 
       <h3 className="font-semibold text-gray-900 text-lg pr-20 pt-1">{food.name}</h3>
+
+      {/* 地址导航 */}
+      {food.address && (
+        <a
+          href={getNavUrl()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-xs text-blue-600 mt-1 hover:text-blue-800"
+        >
+          <Navigation size={12} /> {food.address}
+        </a>
+      )}
 
       <div className="flex flex-wrap gap-2 mt-2">
         {food.city && (

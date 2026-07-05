@@ -217,6 +217,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
 
     const food: FoodInsert = {
       name: name.trim(),
+      address: address.trim() || null,
       city: city.trim() || null,
       region: region.trim() || null,
       tags: tags.split(',').map((t) => t.trim()).filter(Boolean),

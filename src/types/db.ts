@@ -8,6 +8,7 @@ export interface Food {
   name: string
   city: string | null
   region: string | null
+  address: string | null  // 详细地址（用于导航）
   tags: string[] | null
   price: number | null
   rating: number | null
