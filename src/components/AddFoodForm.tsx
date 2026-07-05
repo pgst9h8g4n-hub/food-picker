@@ -94,12 +94,17 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
         try { await deleteImage(imagePath) } catch { /* ignore */ }
       }
       const url = await uploadImage(file)
+      console.log('[AddFoodForm] 图片上传成功:', url)
       setImageUrl(url)
-      // 提取 path
-      const match = url.match(/\/food-images\/(.+)\?/)// public URL 带 query
-      if (match) setImagePath(match[1])
+      // 提取 path（public URL 格式: https://xxx.supabase.co/storage/v1/public/foo-images/bar.webp?...）
+      const match = url.match(/\/food-images\/(.+?)(\?|$)/)
+      if (match) {
+        setImagePath(match[1])
+        console.log('[AddFoodForm] 提取到 imagePath:', match[1])
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '上传失败'
+      console.error('[AddFoodForm] 上传失败:', msg)
       setUploadError(msg)
     }
     setUploading(false)
@@ -157,6 +162,11 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
                   src={imageUrl}
                   alt="预览"
                   className="w-full h-40 object-cover rounded-lg"
+                  onLoad={() => console.log('[AddFoodForm] 图片加载成功')}
+                  onError={(e) => {
+                    console.error('[AddFoodForm] 图片加载失败, src:', imageUrl)
+                    ;(e.target as HTMLImageElement).style.display = 'none'
+                  }}
                 />
                 <button
                   type="button"
