@@ -13,8 +13,7 @@ export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit,
   // 导航链接：拼地址+店名，跳转高德地图
   function getNavUrl() {
     if (!food.address) return ''
-    const keyword = `${food.name} ${food.address}`.trim()
-    return `https://uri.amap.com/search?keyword=${encodeURIComponent(keyword)}&coordinate=116.397428,39.90923&callnative=1`
+    return `https://uri.amap.com/search?keyword=${encodeURIComponent(food.address)}&callnative=1`
   }
 
   // 二刷意愿循环切换：null → would → wouldnt → neutral → null
