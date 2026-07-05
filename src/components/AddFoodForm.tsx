@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Upload, Sparkles } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
-import { uploadImage, deleteImage } from '@/lib/upload'
+import { uploadImage, deleteImage, getSignedUrl, fileToBase64 } from '@/lib/upload'
 
 interface AddFoodFormProps {
   onSubmit: (food: FoodInsert) => void
@@ -38,11 +38,12 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
 
-  // 图片
+  // 图片：用 base64 做预览（私有 bucket 也能显示）
   const [imageUrl, setImageUrl] = useState<string | null>(initialData?.image_url ?? null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [imagePath, setImagePath] = useState<string | null>(null)
+  const [signedUrlCache, setSignedUrlCache] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 剪贴板检测状态
@@ -62,37 +63,42 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       setLink(initialData.source_url ?? '')
       if (initialData.image_url) {
         setImageUrl(initialData.image_url)
-        const match = initialData.image_url.match(/\/food-images\/(.+)$/)
-        if (match) setImagePath(match[1])
+        // 如果是 Storage 图片，提取 path 用于生成签名 URL
+        const match = initialData.image_url.match(/\/food-images\/(.+?)(\?|$)/)
+        if (match) {
+          setImagePath(match[1])
+          // 用 signed URL 加载
+          getSignedUrl(match[1]).then(url => {
+            setImageUrl(url)
+            setSignedUrlCache(url)
+          }).catch(() => {
+            // signed URL 失败，保持原 URL
+          })
+        }
       }
     }
   }, [initialData])
 
   // 弹窗打开时检测剪贴板
   useEffect(() => {
-    // 只在新增模式（非编辑）下检测
     if (initialData) return
 
     async function checkClipboard() {
       try {
-        // 尝试读取剪贴板文本
         const text = await navigator.clipboard.readText()
         if (text && isSupportedLink(text)) {
           setClipboardLink(text)
           setShowAutoDetect(true)
         }
       } catch {
-        // 剪贴板权限被拒绝或不可用，静默忽略
         console.log('[AddFoodForm] 无法读取剪贴板')
       }
     }
 
-    // 延迟 500ms 检测，给用户一点时间打开弹窗
     const timer = setTimeout(checkClipboard, 500)
     return () => clearTimeout(timer)
   }, [initialData])
 
-  // 自动识别剪贴板链接
   async function handleAutoDetect() {
     setShowAutoDetect(false)
     if (!clipboardLink) return
@@ -150,40 +156,48 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     }
     setUploading(true)
     try {
+      // 如果有旧的 Storage 图片，先删除
       if (imagePath) {
         try { await deleteImage(imagePath) } catch { /* ignore */ }
       }
-      // 先用本地 URL 即时预览
-      const localUrl = URL.createObjectURL(file)
-      setImageUrl(localUrl)
-      // 后台上传
-      const url = await uploadImage(file)
-      setImageUrl(url)
-      const match = url.match(/\/food-images\/(.+?)(\?|$)/)
-      if (match) setImagePath(match[1])
+
+      // 1. 立即用 base64 做预览（不受 bucket 权限影响）
+      const base64 = await fileToBase64(file)
+      setImageUrl(base64)
+
+      // 2. 后台上传到 Storage
+      const path = await uploadImage(file)
+      setImagePath(path)
+      // 用 signed URL 替换 base64（节省流量）
+      const signed = await getSignedUrl(path)
+      setImageUrl(signed)
+      setSignedUrlCache(signed)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '上传失败'
       console.error('[AddFoodForm] 上传失败:', msg)
       setUploadError(msg)
+      // 上传失败不影响 base64 预览
     }
     setUploading(false)
   }
 
   function handleDeleteImage() {
-    if (imageUrl && imageUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(imageUrl)
-    }
     if (imagePath) {
       deleteImage(imagePath).catch(() => {})
     }
     setImageUrl(null)
     setImagePath(null)
+    setSignedUrlCache(null)
     setUploadError(null)
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
+
+    // 提交时使用 signed URL 或原始 URL
+    // base64 太大不适合存数据库，用 signed URL
+    const finalImageUrl = signedUrlCache || imageUrl
 
     const food: FoodInsert = {
       name: name.trim(),
@@ -195,7 +209,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       source,
       source_url: link.trim() || null,
       notes: notes.trim() || null,
-      image_url: imageUrl,
+      image_url: finalImageUrl,
       is_eaten: false,
       revisit: initialData?.revisit ?? null,
     }

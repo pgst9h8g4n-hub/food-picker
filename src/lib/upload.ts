@@ -1,6 +1,18 @@
 import { supabase } from '@/lib/supabase'
 
 /**
+ * 将 File 转为 base64 Data URL（用于即时预览）
+ */
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => resolve(e.target?.result as string)
+    reader.onerror = () => reject(new Error('File read failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
  * 压缩图片为 WebP 格式
  * 限制最大边长 1200px，质量 0.8
  * 移动端上传大图（通常 3-5MB）压缩至 ~200KB
@@ -42,7 +54,7 @@ export function compressImage(
 
 /**
  * 上传单张图片到 Supabase Storage
- * @returns 图片的 public URL
+ * @returns 上传后的文件路径（用于后续生成签名 URL）
  */
 export async function uploadImage(file: File): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession()
@@ -62,10 +74,23 @@ export async function uploadImage(file: File): Promise<string> {
     throw uploadError
   }
 
-  const { data } = supabase.storage.from('food-images').getPublicUrl(fileName)
-  const publicUrl = data?.publicUrl ?? ''
-  console.log('[upload] 上传成功, URL:', publicUrl)
-  return publicUrl
+  console.log('[upload] 上传成功, path:', fileName)
+  return fileName
+}
+
+/**
+ * 生成图片的签名 URL（私有 bucket 可访问）
+ * 有效期 1 小时
+ */
+export async function getSignedUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from('food-images')
+    .createSignedUrl(path, 3600)
+  if (error) {
+    console.error('[upload] 签名 URL 生成失败:', error)
+    throw error
+  }
+  return data.signedUrl
 }
 
 /**
