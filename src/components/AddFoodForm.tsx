@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Upload, Navigation } from 'lucide-react'
+import { X } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
-import { compressImageToBase64 } from '@/lib/upload'
 
 interface AddFoodFormProps {
   onSubmit: (food: FoodInsert) => void
@@ -53,13 +52,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
 
-  // 图片
-  const [imageBase64, setImageBase64] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // 防抖定时器
   const parseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -72,7 +64,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   useEffect(() => {
     if (initialData) {
       setName(initialData.name)
-      setAddress(initialData.notes ?? '')
+      setAddress(initialData.address ?? '')
       setCity(initialData.city ?? '')
       setRegion(initialData.region ?? '')
       setTags((initialData.tags ?? []).join(', '))
@@ -82,9 +74,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       setCopyText(initialData.notes ?? '')
       setSource(initialData.source)
       setLink(initialData.source_url ?? '')
-      if (initialData.image_url) {
-        setImageBase64(initialData.image_url)
-      }
     }
   }, [initialData])
 
@@ -131,9 +120,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
         setLinkError(result.error)
       } else if (result.parsed?.title) {
         setName(result.parsed.title)
-        if (result.parsed.image_url) {
-          setImageBase64(result.parsed.image_url)
-        }
         setSource(result.parsed.platform)
       } else if (result.parsed?.platform) {
         setSource(result.parsed.platform)
@@ -172,45 +158,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     if (shopName && !name) setName(shopName)
   }
 
-  // 图片上传：先即时预览（FileReader），再压缩
-  async function handleImageUpload(file: File) {
-    setUploadError(null)
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('图片不能超过 5MB')
-      return
-    }
-    setUploading(true)
-    try {
-      // 1. 立即用 FileReader 转 base64 做预览（最快）
-      const previewBase64 = await fileToBase64(file)
-      setImageBase64(previewBase64)
-
-      // 2. 后台压缩为 WebP base64（减小体积）
-      const compressedBase64 = await compressImageToBase64(file)
-      setImageBase64(compressedBase64)
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '处理失败'
-      console.error('[AddFoodForm] 图片处理失败:', msg)
-      setUploadError(msg)
-    }
-    setUploading(false)
-  }
-
-  // FileReader 转 base64 的辅助函数（本地）
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = (e) => resolve(e.target?.result as string)
-      reader.onerror = () => reject(new Error('File read failed'))
-      reader.readAsDataURL(file)
-    })
-  }
-
-  function handleDeleteImage() {
-    setImageBase64(null)
-    setUploadError(null)
-  }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
@@ -226,7 +173,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       source,
       source_url: link.trim() || null,
       notes: notes.trim() || null,
-      image_url: imageBase64,
+      image_url: null,
       is_eaten: false,
       revisit: initialData?.revisit ?? null,
     }
@@ -246,53 +193,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* 图片上传 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">📷 图片（可选）</label>
-            {imageBase64 ? (
-              <div className="relative">
-                <img
-                  src={imageBase64}
-                  alt="预览"
-                  className="w-full h-48 object-cover rounded-lg"
-                  onError={() => {
-                    console.error('[AddFoodForm] 图片加载失败')
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleDeleteImage}
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ) : (
-              <label className="block w-full h-28 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-orange-400 transition-colors">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  // 去掉 capture="environment"，同时支持相册和拍照
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleImageUpload(file)
-                    e.target.value = ''
-                  }}
-                  className="hidden"
-                />
-                {uploading ? (
-                  <span className="text-sm text-gray-400">处理中...</span>
-                ) : (
-                  <span className="text-sm text-gray-400 flex items-center gap-1">
-                    <Upload size={16} /> 拍照或从相册选择
-                  </span>
-                )}
-              </label>
-            )}
-            {uploadError && <p className="text-xs text-red-500 mt-1">{uploadError}</p>}
-          </div>
-
           {/* 名称 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -313,25 +213,13 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
             <label className="block text-sm font-medium text-gray-700 mb-1">
               📍 地址（点击可导航）
             </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
-                placeholder="如：成都市锦江区春熙路"
-              />
-              {address && (
-                <a
-                  href={`https://uri.amap.com/marker?position=${encodeURIComponent(address)}&name=${encodeURIComponent(name)}&callnative=1`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 flex items-center gap-1 whitespace-nowrap"
-                >
-                  <Navigation size={14} /> 导航
-                </a>
-              )}
-            </div>
+            <input
+              type="text"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+              placeholder="如：成都市锦江区春熙路"
+            />
           </div>
 
           {/* 城市 + 区域 */}

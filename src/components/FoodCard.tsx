@@ -10,13 +10,11 @@ interface FoodCardProps {
 }
 
 export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit, onDelete }: FoodCardProps) {
-  // 导航链接：拼地址+店名，跳转高德地图
   function getNavUrl() {
     if (!food.address) return ''
     return `https://uri.amap.com/search?keyword=${encodeURIComponent(food.address)}&callnative=1`
   }
 
-  // 二刷意愿循环切换：null → would → wouldnt → neutral → null
   function cycleRevisit(current: string | null) {
     if (!current || current === 'neutral') return 'would'
     if (current === 'would') return 'wouldnt'
@@ -30,18 +28,6 @@ export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit,
         food.is_eaten ? 'opacity-60' : ''
       }`}
     >
-      {/* 图片 */}
-      {food.image_url && (
-        <div className="mb-3">
-          <img
-            src={food.image_url}
-            alt={food.name}
-            className="w-full h-40 object-cover rounded-lg"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-          />
-        </div>
-      )}
-
       {/* 状态标签 */}
       <div className="absolute top-2 right-2 flex gap-1">
         {food.is_eaten && (
