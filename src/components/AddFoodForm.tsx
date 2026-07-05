@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Upload } from 'lucide-react'
+import { X, Upload, Sparkles } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
 import { uploadImage, deleteImage } from '@/lib/upload'
 
@@ -7,6 +7,22 @@ interface AddFoodFormProps {
   onSubmit: (food: FoodInsert) => void
   onClose: () => void
   initialData?: Food | null
+}
+
+// 支持的链接平台正则
+const LINK_PATTERNS = [
+  /xiaohongshu\.com/i,
+  /xn--wpr/gi,
+  /meituan\.com/i,
+  /dianping\.com/i,
+  /dpurl\.cn/i,
+  /mtw\.so/i,
+  /douyin\.com/i,
+  /iesdouyin\.com/i,
+]
+
+function isSupportedLink(text: string): boolean {
+  return LINK_PATTERNS.some((p) => p.test(text))
 }
 
 export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodFormProps) {
@@ -22,12 +38,16 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
 
-  // 图片：先用本地 URL 预览，上传成功后替换为远程 URL
+  // 图片
   const [imageUrl, setImageUrl] = useState<string | null>(initialData?.image_url ?? null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [imagePath, setImagePath] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 剪贴板检测状态
+  const [clipboardLink, setClipboardLink] = useState<string | null>(null)
+  const [showAutoDetect, setShowAutoDetect] = useState(false)
 
   useEffect(() => {
     if (initialData) {
@@ -48,8 +68,44 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     }
   }, [initialData])
 
-  async function handleParseLink() {
-    if (!link.trim()) return
+  // 弹窗打开时检测剪贴板
+  useEffect(() => {
+    // 只在新增模式（非编辑）下检测
+    if (initialData) return
+
+    async function checkClipboard() {
+      try {
+        // 尝试读取剪贴板文本
+        const text = await navigator.clipboard.readText()
+        if (text && isSupportedLink(text)) {
+          setClipboardLink(text)
+          setShowAutoDetect(true)
+        }
+      } catch {
+        // 剪贴板权限被拒绝或不可用，静默忽略
+        console.log('[AddFoodForm] 无法读取剪贴板')
+      }
+    }
+
+    // 延迟 500ms 检测，给用户一点时间打开弹窗
+    const timer = setTimeout(checkClipboard, 500)
+    return () => clearTimeout(timer)
+  }, [initialData])
+
+  // 自动识别剪贴板链接
+  async function handleAutoDetect() {
+    setShowAutoDetect(false)
+    if (!clipboardLink) return
+    setLink(clipboardLink)
+    await doParseLink(clipboardLink)
+  }
+
+  function dismissAutoDetect() {
+    setShowAutoDetect(false)
+  }
+
+  async function doParseLink(url: string) {
+    if (!url.trim()) return
     setLinkLoading(true)
     setLinkError(null)
     try {
@@ -57,7 +113,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/parse-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: link.trim() }),
+        body: JSON.stringify({ url: url.trim() }),
       })
       const result = await resp.json()
       if (result.error) {
@@ -70,7 +126,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
         setSource(result.parsed.platform)
       } else if (result.parsed?.platform) {
         setSource(result.parsed.platform)
-        // 不显示错误，改为友好提示
         setLinkError(null)
       } else {
         setLinkError(null)
@@ -78,9 +133,13 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '识别失败'
       console.warn('[AddFoodForm] 链接解析失败:', msg)
-      setLinkError(null) // 不显示错误
+      setLinkError(null)
     }
     setLinkLoading(false)
+  }
+
+  async function handleManualParse() {
+    doParseLink(link)
   }
 
   async function handleImageUpload(file: File) {
@@ -91,34 +150,26 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     }
     setUploading(true)
     try {
-      // 如果有旧的 Storage 图片，先删除
       if (imagePath) {
         try { await deleteImage(imagePath) } catch { /* ignore */ }
       }
-
       // 先用本地 URL 即时预览
       const localUrl = URL.createObjectURL(file)
       setImageUrl(localUrl)
-
-      // 后台上传到 Storage
+      // 后台上传
       const url = await uploadImage(file)
-      setImageUrl(url) // 替换为远程 URL
-      // 提取 path
+      setImageUrl(url)
       const match = url.match(/\/food-images\/(.+?)(\?|$)/)
-      if (match) {
-        setImagePath(match[1])
-      }
+      if (match) setImagePath(match[1])
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '上传失败'
       console.error('[AddFoodForm] 上传失败:', msg)
       setUploadError(msg)
-      // 上传失败不影响本地预览
     }
     setUploading(false)
   }
 
   function handleDeleteImage() {
-    // 释放本地 URL
     if (imageUrl && imageUrl.startsWith('blob:')) {
       URL.revokeObjectURL(imageUrl)
     }
@@ -162,6 +213,36 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
             <X size={20} />
           </button>
         </div>
+
+        {/* 剪贴板自动检测提示 */}
+        {showAutoDetect && clipboardLink && (
+          <div className="bg-orange-50 border-b border-orange-200 px-4 py-3">
+            <div className="flex items-start gap-3">
+              <Sparkles className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-orange-800">检测到分享链接</p>
+                <p className="text-xs text-orange-600 truncate mt-0.5">
+                  {clipboardLink.length > 50 ? clipboardLink.slice(0, 50) + '...' : clipboardLink}
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={handleAutoDetect}
+                    disabled={linkLoading}
+                    className="px-3 py-1 bg-orange-500 text-white text-xs rounded-lg font-medium hover:bg-orange-600 disabled:opacity-50"
+                  >
+                    {linkLoading ? '识别中...' : '自动识别'}
+                  </button>
+                  <button
+                    onClick={dismissAutoDetect}
+                    className="px-3 py-1 bg-white text-gray-600 text-xs rounded-lg border hover:bg-gray-50"
+                  >
+                    暂不识别
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* 图片上传 */}
@@ -320,7 +401,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
               />
               <button
                 type="button"
-                onClick={handleParseLink}
+                onClick={handleManualParse}
                 disabled={linkLoading || !link.trim()}
                 className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-purple-600 transition-colors whitespace-nowrap"
               >
