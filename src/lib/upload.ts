@@ -51,14 +51,21 @@ export async function uploadImage(file: File): Promise<string> {
   const compressed = await compressImage(file)
   const fileName = `${session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.webp`
 
-  const { error } = await supabase.storage
+  console.log('[upload] 开始上传:', fileName, '大小:', file.size, '压缩后:', compressed.size)
+
+  const { error: uploadError } = await supabase.storage
     .from('food-images')
     .upload(fileName, compressed, { upsert: true })
 
-  if (error) throw error
+  if (uploadError) {
+    console.error('[upload] 上传失败:', uploadError)
+    throw uploadError
+  }
 
   const { data } = supabase.storage.from('food-images').getPublicUrl(fileName)
-  return data?.publicUrl ?? ''
+  const publicUrl = data?.publicUrl ?? ''
+  console.log('[upload] 上传成功, URL:', publicUrl)
+  return publicUrl
 }
 
 /**

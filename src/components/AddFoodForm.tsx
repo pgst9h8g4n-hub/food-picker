@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, Upload } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
 import { uploadImage, deleteImage } from '@/lib/upload'
@@ -21,11 +21,13 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   const [source, setSource] = useState<string | null>(null)
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
+
+  // 图片：先用本地 URL 预览，上传成功后替换为远程 URL
   const [imageUrl, setImageUrl] = useState<string | null>(initialData?.image_url ?? null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  // 追踪图片在 Storage 中的路径（用于删除旧图）
   const [imagePath, setImagePath] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (initialData) {
@@ -40,7 +42,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       setLink(initialData.source_url ?? '')
       if (initialData.image_url) {
         setImageUrl(initialData.image_url)
-        // 如果是 Storage 图片，提取 path
         const match = initialData.image_url.match(/\/food-images\/(.+)$/)
         if (match) setImagePath(match[1])
       }
@@ -69,20 +70,21 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
         setSource(result.parsed.platform)
       } else if (result.parsed?.platform) {
         setSource(result.parsed.platform)
-        setLinkError('已识别为' + (result.parsed.platform === 'meituan' ? '美团/大众点评' : result.parsed.platform === 'xiaohongshu' ? '小红书' : '抖音') + '链接，但页面内容需要 JS 渲染，无法自动提取标题。请手动填写。')
+        // 不显示错误，改为友好提示
+        setLinkError(null)
       } else {
-        setLinkError('无法识别该平台链接，请手动填写')
+        setLinkError(null)
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '识别失败'
-      setLinkError(msg)
+      console.warn('[AddFoodForm] 链接解析失败:', msg)
+      setLinkError(null) // 不显示错误
     }
     setLinkLoading(false)
   }
 
   async function handleImageUpload(file: File) {
     setUploadError(null)
-    // 限制 5MB
     if (file.size > 5 * 1024 * 1024) {
       setUploadError('图片不能超过 5MB')
       return
@@ -93,24 +95,33 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       if (imagePath) {
         try { await deleteImage(imagePath) } catch { /* ignore */ }
       }
+
+      // 先用本地 URL 即时预览
+      const localUrl = URL.createObjectURL(file)
+      setImageUrl(localUrl)
+
+      // 后台上传到 Storage
       const url = await uploadImage(file)
-      console.log('[AddFoodForm] 图片上传成功:', url)
-      setImageUrl(url)
-      // 提取 path（public URL 格式: https://xxx.supabase.co/storage/v1/public/foo-images/bar.webp?...）
+      setImageUrl(url) // 替换为远程 URL
+      // 提取 path
       const match = url.match(/\/food-images\/(.+?)(\?|$)/)
       if (match) {
         setImagePath(match[1])
-        console.log('[AddFoodForm] 提取到 imagePath:', match[1])
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '上传失败'
       console.error('[AddFoodForm] 上传失败:', msg)
       setUploadError(msg)
+      // 上传失败不影响本地预览
     }
     setUploading(false)
   }
 
   function handleDeleteImage() {
+    // 释放本地 URL
+    if (imageUrl && imageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(imageUrl)
+    }
     if (imagePath) {
       deleteImage(imagePath).catch(() => {})
     }
@@ -161,11 +172,9 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
                 <img
                   src={imageUrl}
                   alt="预览"
-                  className="w-full h-40 object-cover rounded-lg"
-                  onLoad={() => console.log('[AddFoodForm] 图片加载成功')}
-                  onError={(e) => {
+                  className="w-full h-48 object-cover rounded-lg"
+                  onError={() => {
                     console.error('[AddFoodForm] 图片加载失败, src:', imageUrl)
-                    ;(e.target as HTMLImageElement).style.display = 'none'
                   }}
                 />
                 <button
@@ -179,13 +188,14 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
             ) : (
               <label className="block w-full h-28 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-orange-400 transition-colors">
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   capture="environment"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) handleImageUpload(file)
-                    e.target.value = '' // 允许重复选择同一文件
+                    e.target.value = ''
                   }}
                   className="hidden"
                 />
