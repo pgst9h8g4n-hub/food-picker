@@ -17,7 +17,7 @@ export interface Food {
   notes: string | null
   image_url: string | null  // 美食图片 URL（Supabase Storage 或外链）
   is_eaten: boolean
-  revisit: 'would' | 'wouldnt' | null  // 是否愿意二次光顾
+  revisit: 'would' | 'wouldnt' | 'neutral' | null  // 是否愿意二次光顾：会/不会/无功无过
   created_at: string
   updated_at: string
 }

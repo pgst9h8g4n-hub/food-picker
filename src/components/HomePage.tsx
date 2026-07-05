@@ -43,7 +43,7 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  async function handleUpdateRevisit(id: string, revisit: 'would' | 'wouldnt') {
+  async function handleUpdateRevisit(id: string, revisit: 'would' | 'wouldnt' | 'neutral') {
     await updateFood(id, { revisit })
   }
 

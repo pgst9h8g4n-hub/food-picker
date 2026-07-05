@@ -1,10 +1,10 @@
-import { MapPin, Tag, Trash2, Check, Edit2, ThumbsUp, ThumbsDown, Navigation } from 'lucide-react'
+import { MapPin, Tag, Trash2, Check, Edit2, ThumbsUp, ThumbsDown, MinusCircle, Navigation } from 'lucide-react'
 import type { Food } from '@/types/db'
 
 interface FoodCardProps {
   food: Food
   onToggleEaten: (id: string) => void
-  onUpdateRevisit: (id: string, revisit: 'would' | 'wouldnt') => void
+  onUpdateRevisit: (id: string, revisit: 'would' | 'wouldnt' | 'neutral') => void | Promise<void>
   onEdit: (food: Food) => void
   onDelete: (id: string) => void
 }
@@ -14,8 +14,15 @@ export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit,
   function getNavUrl() {
     if (!food.address) return ''
     const keyword = `${food.name} ${food.address}`.trim()
-    // 高德地图搜索导航
     return `https://uri.amap.com/search?keyword=${encodeURIComponent(keyword)}&coordinate=116.397428,39.90923&callnative=1`
+  }
+
+  // 二刷意愿循环切换：null → would → wouldnt → neutral → null
+  function cycleRevisit(current: string | null) {
+    if (!current || current === 'neutral') return 'would'
+    if (current === 'would') return 'wouldnt'
+    if (current === 'wouldnt') return 'neutral'
+    return 'would'
   }
 
   return (
@@ -51,6 +58,11 @@ export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit,
         {food.revisit === 'wouldnt' && (
           <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
             <ThumbsDown size={12} /> 不推荐二刷
+          </span>
+        )}
+        {food.revisit === 'neutral' && (
+          <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+            <MinusCircle size={12} /> 无功无过
           </span>
         )}
       </div>
@@ -104,17 +116,22 @@ export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit,
 
         <div className="flex gap-1">
           <button
-            onClick={() => food.revisit === 'would' ? onUpdateRevisit(food.id, 'wouldnt') : onUpdateRevisit(food.id, 'would')}
+            onClick={() => onUpdateRevisit(food.id, cycleRevisit(food.revisit))}
             className={`p-1.5 rounded-full transition-colors ${
               food.revisit === 'would'
                 ? 'text-blue-500 hover:bg-blue-50'
                 : food.revisit === 'wouldnt'
                 ? 'text-red-400 hover:bg-red-50'
+                : food.revisit === 'neutral'
+                ? 'text-gray-500 hover:bg-gray-50'
                 : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'
             }`}
-            title={food.revisit ? '切换二刷意愿' : '标记二刷意愿'}
+            title="切换二刷意愿"
           >
-            {food.revisit === 'would' ? <ThumbsUp size={16} /> : food.revisit === 'wouldnt' ? <ThumbsDown size={16} /> : <ThumbsUp size={16} />}
+            {food.revisit === 'would' ? <ThumbsUp size={16} /> :
+             food.revisit === 'wouldnt' ? <ThumbsDown size={16} /> :
+             food.revisit === 'neutral' ? <MinusCircle size={16} /> :
+             <ThumbsUp size={16} />}
           </button>
           <button
             onClick={() => onEdit(food)}
@@ -147,9 +164,13 @@ export default function FoodCard({ food, onToggleEaten, onUpdateRevisit, onEdit,
           )}
           {food.revisit && (
             <span className={`text-xs px-1.5 py-0.5 rounded ${
-              food.revisit === 'would' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'
+              food.revisit === 'would' ? 'bg-blue-50 text-blue-600' :
+              food.revisit === 'wouldnt' ? 'bg-red-50 text-red-600' :
+              'bg-gray-100 text-gray-500'
             }`}>
-              {food.revisit === 'would' ? '会二刷' : '不推荐二刷'}
+              {food.revisit === 'would' ? '会二刷' :
+               food.revisit === 'wouldnt' ? '不推荐二刷' :
+               '无功无过'}
             </span>
           )}
         </div>
