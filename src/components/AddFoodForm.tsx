@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Upload, Sparkles } from 'lucide-react'
+import { X, Upload } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
 import { uploadImage, deleteImage, getSignedUrl, fileToBase64 } from '@/lib/upload'
 
@@ -46,10 +46,17 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   const [signedUrlCache, setSignedUrlCache] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 剪贴板检测状态
-  const [clipboardLink, setClipboardLink] = useState<string | null>(null)
-  const [showAutoDetect, setShowAutoDetect] = useState(false)
+  // 防抖定时器
+  const parseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
+    }
+  }, [])
+
+  // 填充初始数据
   useEffect(() => {
     if (initialData) {
       setName(initialData.name)
@@ -63,23 +70,19 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       setLink(initialData.source_url ?? '')
       if (initialData.image_url) {
         setImageUrl(initialData.image_url)
-        // 如果是 Storage 图片，提取 path 用于生成签名 URL
         const match = initialData.image_url.match(/\/food-images\/(.+?)(\?|$)/)
         if (match) {
           setImagePath(match[1])
-          // 用 signed URL 加载
           getSignedUrl(match[1]).then(url => {
             setImageUrl(url)
             setSignedUrlCache(url)
-          }).catch(() => {
-            // signed URL 失败，保持原 URL
-          })
+          }).catch(() => {})
         }
       }
     }
   }, [initialData])
 
-  // 弹窗打开时检测剪贴板
+  // 打开新增弹窗时，尝试读取剪贴板
   useEffect(() => {
     if (initialData) return
 
@@ -87,11 +90,10 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       try {
         const text = await navigator.clipboard.readText()
         if (text && isSupportedLink(text)) {
-          setClipboardLink(text)
-          setShowAutoDetect(true)
+          setLink(text)
         }
       } catch {
-        console.log('[AddFoodForm] 无法读取剪贴板')
+        // 剪贴板权限被拒绝或不可用，静默忽略
       }
     }
 
@@ -99,17 +101,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     return () => clearTimeout(timer)
   }, [initialData])
 
-  async function handleAutoDetect() {
-    setShowAutoDetect(false)
-    if (!clipboardLink) return
-    setLink(clipboardLink)
-    await doParseLink(clipboardLink)
-  }
-
-  function dismissAutoDetect() {
-    setShowAutoDetect(false)
-  }
-
+  // 实际解析链接的逻辑
   async function doParseLink(url: string) {
     if (!url.trim()) return
     setLinkLoading(true)
@@ -144,7 +136,28 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     setLinkLoading(false)
   }
 
-  async function handleManualParse() {
+  // 链接输入框 onChange：粘贴后自动触发识别
+  function handleLinkChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const newLink = e.target.value
+    setLink(newLink)
+
+    // 清除之前的定时器
+    if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
+
+    // 如果包含支持的平台链接，延迟 1.5 秒后自动识别
+    if (newLink.trim() && isSupportedLink(newLink)) {
+      parseTimerRef.current = setTimeout(() => {
+        doParseLink(newLink)
+      }, 1500)
+    } else {
+      setLinkLoading(false)
+    }
+  }
+
+  // 手动点击"识别"按钮
+  function handleManualParse() {
+    // 清除防抖定时器
+    if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
     doParseLink(link)
   }
 
@@ -156,19 +169,18 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     }
     setUploading(true)
     try {
-      // 如果有旧的 Storage 图片，先删除
       if (imagePath) {
         try { await deleteImage(imagePath) } catch { /* ignore */ }
       }
 
-      // 1. 立即用 base64 做预览（不受 bucket 权限影响）
+      // 先用 base64 即时预览
       const base64 = await fileToBase64(file)
       setImageUrl(base64)
 
-      // 2. 后台上传到 Storage
+      // 后台上传到 Storage
       const path = await uploadImage(file)
       setImagePath(path)
-      // 用 signed URL 替换 base64（节省流量）
+      // 用 signed URL 替换 base64
       const signed = await getSignedUrl(path)
       setImageUrl(signed)
       setSignedUrlCache(signed)
@@ -176,7 +188,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       const msg = e instanceof Error ? e.message : '上传失败'
       console.error('[AddFoodForm] 上传失败:', msg)
       setUploadError(msg)
-      // 上传失败不影响 base64 预览
     }
     setUploading(false)
   }
@@ -195,8 +206,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     e.preventDefault()
     if (!name.trim()) return
 
-    // 提交时使用 signed URL 或原始 URL
-    // base64 太大不适合存数据库，用 signed URL
     const finalImageUrl = signedUrlCache || imageUrl
 
     const food: FoodInsert = {
@@ -227,36 +236,6 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
             <X size={20} />
           </button>
         </div>
-
-        {/* 剪贴板自动检测提示 */}
-        {showAutoDetect && clipboardLink && (
-          <div className="bg-orange-50 border-b border-orange-200 px-4 py-3">
-            <div className="flex items-start gap-3">
-              <Sparkles className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-orange-800">检测到分享链接</p>
-                <p className="text-xs text-orange-600 truncate mt-0.5">
-                  {clipboardLink.length > 50 ? clipboardLink.slice(0, 50) + '...' : clipboardLink}
-                </p>
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={handleAutoDetect}
-                    disabled={linkLoading}
-                    className="px-3 py-1 bg-orange-500 text-white text-xs rounded-lg font-medium hover:bg-orange-600 disabled:opacity-50"
-                  >
-                    {linkLoading ? '识别中...' : '自动识别'}
-                  </button>
-                  <button
-                    onClick={dismissAutoDetect}
-                    className="px-3 py-1 bg-white text-gray-600 text-xs rounded-lg border hover:bg-gray-50"
-                  >
-                    暂不识别
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* 图片上传 */}
@@ -409,7 +388,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
               <input
                 type="url"
                 value={link}
-                onChange={(e) => setLink(e.target.value)}
+                onChange={handleLinkChange}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                 placeholder="粘贴小红书/抖音/美团链接"
               />
