@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Upload } from 'lucide-react'
+import { X, Upload, Navigation } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
 import { compressImageToBase64 } from '@/lib/upload'
 
@@ -27,26 +27,20 @@ function isSupportedLink(text: string): boolean {
 
 /**
  * 从推荐文案中提取店名
- * 常见模式：【店名】、店名：xxx、xxx（xxx）
  */
 function extractShopName(text: string): string | null {
-  // 模式1: 【店名】或【店名（分店）】
   const match1 = text.match(/【([^】]+?)】/)
   if (match1) return match1[1].trim()
-
-  // 模式2: 店名：xxx 或 店名 xxx
   const match2 = text.match(/(?:店名|店铺|餐厅|餐馆)[:：\s]+(.{2,30})(?:\s|$|[【])/)
   if (match2) return match2[1].trim()
-
-  // 模式3: 位于文案开头的前2-30个中文字符（排除标点）
   const match3 = text.match(/^[一-鿿〇〇]{2,30}/)
   if (match3 && match3[0].length >= 2) return match3[0].trim()
-
   return null
 }
 
 export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodFormProps) {
   const [name, setName] = useState('')
+  const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [region, setRegion] = useState('')
   const [tags, setTags] = useState('')
@@ -59,7 +53,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
 
-  // 图片：用 base64 直接存储（私有 bucket 也能显示）
+  // 图片
   const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -78,6 +72,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   useEffect(() => {
     if (initialData) {
       setName(initialData.name)
+      setAddress(initialData.notes ?? '')
       setCity(initialData.city ?? '')
       setRegion(initialData.region ?? '')
       setTags((initialData.tags ?? []).join(', '))
@@ -101,12 +96,9 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       try {
         const text = await navigator.clipboard.readText()
         if (!text) return
-
-        // 检查是否是纯链接
         if (isSupportedLink(text)) {
           setLink(text)
         } else {
-          // 可能是推荐文案，尝试提取店名
           const shopName = extractShopName(text)
           if (shopName) {
             setName(shopName)
@@ -157,17 +149,12 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     setLinkLoading(false)
   }
 
-  // 链接输入框 onChange：粘贴后自动识别
   function handleLinkChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newLink = e.target.value
     setLink(newLink)
-
     if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
-
     if (newLink.trim() && isSupportedLink(newLink)) {
-      parseTimerRef.current = setTimeout(() => {
-        doParseLink(newLink)
-      }, 1500)
+      parseTimerRef.current = setTimeout(() => doParseLink(newLink), 1500)
     } else {
       setLinkLoading(false)
     }
@@ -178,17 +165,14 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     doParseLink(link)
   }
 
-  // 文案变化：自动提取店名
   function handleCopyTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const text = e.target.value
     setCopyText(text)
     const shopName = extractShopName(text)
-    if (shopName && !name) {
-      setName(shopName)
-    }
+    if (shopName && !name) setName(shopName)
   }
 
-  // 图片上传：压缩为 base64 直接显示和存储
+  // 图片上传：先即时预览（FileReader），再压缩
   async function handleImageUpload(file: File) {
     setUploadError(null)
     if (file.size > 5 * 1024 * 1024) {
@@ -197,15 +181,29 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     }
     setUploading(true)
     try {
-      // 压缩并转为 base64（直接用于预览和存储）
-      const base64 = await compressImageToBase64(file)
-      setImageBase64(base64)
+      // 1. 立即用 FileReader 转 base64 做预览（最快）
+      const previewBase64 = await fileToBase64(file)
+      setImageBase64(previewBase64)
+
+      // 2. 后台压缩为 WebP base64（减小体积）
+      const compressedBase64 = await compressImageToBase64(file)
+      setImageBase64(compressedBase64)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '处理失败'
       console.error('[AddFoodForm] 图片处理失败:', msg)
       setUploadError(msg)
     }
     setUploading(false)
+  }
+
+  // FileReader 转 base64 的辅助函数（本地）
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => resolve(e.target?.result as string)
+      reader.onerror = () => reject(new Error('File read failed'))
+      reader.readAsDataURL(file)
+    })
   }
 
   function handleDeleteImage() {
@@ -274,7 +272,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
+                  // 去掉 capture="environment"，同时支持相册和拍照
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) handleImageUpload(file)
@@ -286,7 +284,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
                   <span className="text-sm text-gray-400">处理中...</span>
                 ) : (
                   <span className="text-sm text-gray-400 flex items-center gap-1">
-                    <Upload size={16} /> 拍照或选择图片
+                    <Upload size={16} /> 拍照或从相册选择
                   </span>
                 )}
               </label>
@@ -307,6 +305,32 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
               placeholder="如：海底捞火锅"
               required
             />
+          </div>
+
+          {/* 地址 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              📍 地址（点击可导航）
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+                placeholder="如：成都市锦江区春熙路"
+              />
+              {address && (
+                <a
+                  href={`https://uri.amap.com/marker?position=${encodeURIComponent(address)}&name=${encodeURIComponent(name)}&callnative=1`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 flex items-center gap-1 whitespace-nowrap"
+                >
+                  <Navigation size={14} /> 导航
+                </a>
+              )}
+            </div>
           </div>
 
           {/* 城市 + 区域 */}

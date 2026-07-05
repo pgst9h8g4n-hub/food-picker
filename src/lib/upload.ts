@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 
 /**
- * 将 File 转为 base64 Data URL（用于即时预览和存储）
+ * 将 File 转为 base64 Data URL
  */
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -14,7 +14,6 @@ export function fileToBase64(file: File): Promise<string> {
 
 /**
  * 压缩图片为 WebP Blob
- * 限制最大边长 1200px，质量 0.8
  */
 function compressImageBlob(
   file: File,
@@ -53,7 +52,6 @@ function compressImageBlob(
 
 /**
  * 压缩图片为 base64（用于预览和直接存储）
- * 限制最大边长 1200px，质量 0.8
  */
 export function compressImageToBase64(
   file: File,
@@ -66,7 +64,7 @@ export function compressImageToBase64(
 }
 
 /**
- * 上传单张图片到 Supabase Storage（保留此函数以备后用）
+ * 上传单张图片到 Supabase Storage
  * @returns 文件路径
  */
 export async function uploadImage(file: File): Promise<string> {
