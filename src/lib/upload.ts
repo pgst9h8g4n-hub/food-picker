@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 
 /**
- * 将 File 转为 base64 Data URL（用于即时预览）
+ * 将 File 转为 base64 Data URL（用于即时预览和存储）
  */
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -13,11 +13,10 @@ export function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * 压缩图片为 WebP 格式
+ * 压缩图片为 WebP Blob
  * 限制最大边长 1200px，质量 0.8
- * 移动端上传大图（通常 3-5MB）压缩至 ~200KB
  */
-export function compressImage(
+function compressImageBlob(
   file: File,
   maxWidth = 1200,
   quality = 0.8,
@@ -53,44 +52,36 @@ export function compressImage(
 }
 
 /**
- * 上传单张图片到 Supabase Storage
- * @returns 上传后的文件路径（用于后续生成签名 URL）
+ * 压缩图片为 base64（用于预览和直接存储）
+ * 限制最大边长 1200px，质量 0.8
+ */
+export function compressImageToBase64(
+  file: File,
+  maxWidth = 1200,
+  quality = 0.8,
+): Promise<string> {
+  return compressImageBlob(file, maxWidth, quality).then(blob =>
+    fileToBase64(blob as unknown as File)
+  )
+}
+
+/**
+ * 上传单张图片到 Supabase Storage（保留此函数以备后用）
+ * @returns 文件路径
  */
 export async function uploadImage(file: File): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('未登录')
 
-  const compressed = await compressImage(file)
+  const compressed = await compressImageBlob(file)
   const fileName = `${session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.webp`
-
-  console.log('[upload] 开始上传:', fileName, '大小:', file.size, '压缩后:', compressed.size)
 
   const { error: uploadError } = await supabase.storage
     .from('food-images')
     .upload(fileName, compressed, { upsert: true })
 
-  if (uploadError) {
-    console.error('[upload] 上传失败:', uploadError)
-    throw uploadError
-  }
-
-  console.log('[upload] 上传成功, path:', fileName)
+  if (uploadError) throw uploadError
   return fileName
-}
-
-/**
- * 生成图片的签名 URL（私有 bucket 可访问）
- * 有效期 1 小时
- */
-export async function getSignedUrl(path: string): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from('food-images')
-    .createSignedUrl(path, 3600)
-  if (error) {
-    console.error('[upload] 签名 URL 生成失败:', error)
-    throw error
-  }
-  return data.signedUrl
 }
 
 /**

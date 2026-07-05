@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Upload } from 'lucide-react'
 import type { Food, FoodInsert } from '@/types/db'
-import { uploadImage, deleteImage, getSignedUrl, fileToBase64 } from '@/lib/upload'
+import { compressImageToBase64 } from '@/lib/upload'
 
 interface AddFoodFormProps {
   onSubmit: (food: FoodInsert) => void
@@ -25,6 +25,26 @@ function isSupportedLink(text: string): boolean {
   return LINK_PATTERNS.some((p) => p.test(text))
 }
 
+/**
+ * 从推荐文案中提取店名
+ * 常见模式：【店名】、店名：xxx、xxx（xxx）
+ */
+function extractShopName(text: string): string | null {
+  // 模式1: 【店名】或【店名（分店）】
+  const match1 = text.match(/【([^】]+?)】/)
+  if (match1) return match1[1].trim()
+
+  // 模式2: 店名：xxx 或 店名 xxx
+  const match2 = text.match(/(?:店名|店铺|餐厅|餐馆)[:：\s]+(.{2,30})(?:\s|$|[【])/)
+  if (match2) return match2[1].trim()
+
+  // 模式3: 位于文案开头的前2-30个中文字符（排除标点）
+  const match3 = text.match(/^[一-鿿〇〇]{2,30}/)
+  if (match3 && match3[0].length >= 2) return match3[0].trim()
+
+  return null
+}
+
 export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodFormProps) {
   const [name, setName] = useState('')
   const [city, setCity] = useState('')
@@ -33,23 +53,21 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
   const [price, setPrice] = useState('')
   const [rating, setRating] = useState('3')
   const [notes, setNotes] = useState('')
+  const [copyText, setCopyText] = useState('')
   const [link, setLink] = useState('')
   const [source, setSource] = useState<string | null>(null)
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
 
-  // 图片：用 base64 做预览（私有 bucket 也能显示）
-  const [imageUrl, setImageUrl] = useState<string | null>(initialData?.image_url ?? null)
+  // 图片：用 base64 直接存储（私有 bucket 也能显示）
+  const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [imagePath, setImagePath] = useState<string | null>(null)
-  const [signedUrlCache, setSignedUrlCache] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 防抖定时器
   const parseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 清理定时器
   useEffect(() => {
     return () => {
       if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
@@ -66,18 +84,11 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       setPrice(initialData.price?.toString() ?? '')
       setRating((initialData.rating ?? 3).toString())
       setNotes(initialData.notes ?? '')
+      setCopyText(initialData.notes ?? '')
       setSource(initialData.source)
       setLink(initialData.source_url ?? '')
       if (initialData.image_url) {
-        setImageUrl(initialData.image_url)
-        const match = initialData.image_url.match(/\/food-images\/(.+?)(\?|$)/)
-        if (match) {
-          setImagePath(match[1])
-          getSignedUrl(match[1]).then(url => {
-            setImageUrl(url)
-            setSignedUrlCache(url)
-          }).catch(() => {})
-        }
+        setImageBase64(initialData.image_url)
       }
     }
   }, [initialData])
@@ -89,11 +100,21 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     async function checkClipboard() {
       try {
         const text = await navigator.clipboard.readText()
-        if (text && isSupportedLink(text)) {
+        if (!text) return
+
+        // 检查是否是纯链接
+        if (isSupportedLink(text)) {
           setLink(text)
+        } else {
+          // 可能是推荐文案，尝试提取店名
+          const shopName = extractShopName(text)
+          if (shopName) {
+            setName(shopName)
+            setCopyText(text)
+          }
         }
       } catch {
-        // 剪贴板权限被拒绝或不可用，静默忽略
+        // 剪贴板权限被拒绝
       }
     }
 
@@ -101,7 +122,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     return () => clearTimeout(timer)
   }, [initialData])
 
-  // 实际解析链接的逻辑
+  // 解析链接
   async function doParseLink(url: string) {
     if (!url.trim()) return
     setLinkLoading(true)
@@ -119,7 +140,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       } else if (result.parsed?.title) {
         setName(result.parsed.title)
         if (result.parsed.image_url) {
-          setImageUrl(result.parsed.image_url)
+          setImageBase64(result.parsed.image_url)
         }
         setSource(result.parsed.platform)
       } else if (result.parsed?.platform) {
@@ -136,15 +157,13 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     setLinkLoading(false)
   }
 
-  // 链接输入框 onChange：粘贴后自动触发识别
+  // 链接输入框 onChange：粘贴后自动识别
   function handleLinkChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newLink = e.target.value
     setLink(newLink)
 
-    // 清除之前的定时器
     if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
 
-    // 如果包含支持的平台链接，延迟 1.5 秒后自动识别
     if (newLink.trim() && isSupportedLink(newLink)) {
       parseTimerRef.current = setTimeout(() => {
         doParseLink(newLink)
@@ -154,13 +173,22 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     }
   }
 
-  // 手动点击"识别"按钮
   function handleManualParse() {
-    // 清除防抖定时器
     if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
     doParseLink(link)
   }
 
+  // 文案变化：自动提取店名
+  function handleCopyTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const text = e.target.value
+    setCopyText(text)
+    const shopName = extractShopName(text)
+    if (shopName && !name) {
+      setName(shopName)
+    }
+  }
+
+  // 图片上传：压缩为 base64 直接显示和存储
   async function handleImageUpload(file: File) {
     setUploadError(null)
     if (file.size > 5 * 1024 * 1024) {
@@ -169,44 +197,25 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     }
     setUploading(true)
     try {
-      if (imagePath) {
-        try { await deleteImage(imagePath) } catch { /* ignore */ }
-      }
-
-      // 先用 base64 即时预览
-      const base64 = await fileToBase64(file)
-      setImageUrl(base64)
-
-      // 后台上传到 Storage
-      const path = await uploadImage(file)
-      setImagePath(path)
-      // 用 signed URL 替换 base64
-      const signed = await getSignedUrl(path)
-      setImageUrl(signed)
-      setSignedUrlCache(signed)
+      // 压缩并转为 base64（直接用于预览和存储）
+      const base64 = await compressImageToBase64(file)
+      setImageBase64(base64)
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '上传失败'
-      console.error('[AddFoodForm] 上传失败:', msg)
+      const msg = e instanceof Error ? e.message : '处理失败'
+      console.error('[AddFoodForm] 图片处理失败:', msg)
       setUploadError(msg)
     }
     setUploading(false)
   }
 
   function handleDeleteImage() {
-    if (imagePath) {
-      deleteImage(imagePath).catch(() => {})
-    }
-    setImageUrl(null)
-    setImagePath(null)
-    setSignedUrlCache(null)
+    setImageBase64(null)
     setUploadError(null)
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
-
-    const finalImageUrl = signedUrlCache || imageUrl
 
     const food: FoodInsert = {
       name: name.trim(),
@@ -218,7 +227,7 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
       source,
       source_url: link.trim() || null,
       notes: notes.trim() || null,
-      image_url: finalImageUrl,
+      image_url: imageBase64,
       is_eaten: false,
       revisit: initialData?.revisit ?? null,
     }
@@ -241,14 +250,14 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
           {/* 图片上传 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">📷 图片（可选）</label>
-            {imageUrl ? (
+            {imageBase64 ? (
               <div className="relative">
                 <img
-                  src={imageUrl}
+                  src={imageBase64}
                   alt="预览"
                   className="w-full h-48 object-cover rounded-lg"
                   onError={() => {
-                    console.error('[AddFoodForm] 图片加载失败, src:', imageUrl)
+                    console.error('[AddFoodForm] 图片加载失败')
                   }}
                 />
                 <button
@@ -274,10 +283,10 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
                   className="hidden"
                 />
                 {uploading ? (
-                  <span className="text-sm text-gray-400">上传中...</span>
+                  <span className="text-sm text-gray-400">处理中...</span>
                 ) : (
                   <span className="text-sm text-gray-400 flex items-center gap-1">
-                    <Upload size={16} /> 点击或拍照上传
+                    <Upload size={16} /> 拍照或选择图片
                   </span>
                 )}
               </label>
@@ -364,6 +373,20 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
               onChange={(e) => setTags(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
               placeholder="川菜, 麻辣, 火锅"
+            />
+          </div>
+
+          {/* 推荐文案 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              📋 推荐文案（可选，自动提取店名）
+            </label>
+            <textarea
+              value={copyText}
+              onChange={handleCopyTextChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+              rows={2}
+              placeholder="粘贴小红书/抖音的推荐文字，会自动识别店名"
             />
           </div>
 
