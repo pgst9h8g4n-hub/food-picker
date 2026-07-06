@@ -37,6 +37,26 @@ function extractShopName(text: string): string | null {
   return null
 }
 
+/**
+ * 从推荐文案中提取地址
+ * 常见模式：【地址：xxx】、地址：xxx、xxx路xxx号
+ */
+function extractAddress(text: string): string | null {
+  // 模式1: 【地址：xxx】或【xxx地址xxx】
+  const match1 = text.match(/【(?:地址)[:：\s]*(.{2,50})】/)
+  if (match1) return match1[1].trim()
+
+  // 模式2: 地址：xxx
+  const match2 = text.match(/(?:地址)[:：\s]+(.{2,50})(?:\s|$|[【])/)
+  if (match2) return match2[1].trim()
+
+  // 模式3: 路/街/大道/号 结尾的地址片段
+  const match3 = text.match(/((?:[一-龥]+)(?:路|街|大道|巷|弄|号|栋|楼)[^\s【】]{0,30})/)
+  if (match3 && match3[1].length >= 4) return match3[1].trim()
+
+  return null
+}
+
 export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodFormProps) {
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
@@ -156,6 +176,8 @@ export default function AddFoodForm({ onSubmit, onClose, initialData }: AddFoodF
     setCopyText(text)
     const shopName = extractShopName(text)
     if (shopName && !name) setName(shopName)
+    const addr = extractAddress(text)
+    if (addr && !address) setAddress(addr)
   }
 
   function handleSubmit(e: React.FormEvent) {
