@@ -1,22 +1,25 @@
 import { useState, useMemo } from 'react'
-import { Sparkles, MapPin, Tag, DollarSign, Check, Navigation } from 'lucide-react'
-import type { Food } from '@/types/db'
-import { pickRandom } from '@/lib/random'
+import { Sparkles, MapPin, Tag, Navigation } from 'lucide-react'
+import type { Food, Place } from '@/types/db'
+import { pickRandomFood, pickRandomPlace } from '@/lib/random'
 
 interface RandomPickerProps {
   foods: Food[]
-  onRecordHistory: (food: Food, city?: string, tags?: string[]) => void
+  places: Place[]
+  onRecordHistory: (item: Food | Place, city?: string, tags?: string[]) => void
+  itemType: 'food' | 'place'
 }
 
-export default function RandomPicker({ foods, onRecordHistory }: RandomPickerProps) {
+export default function RandomPicker({ foods, places, onRecordHistory, itemType }: RandomPickerProps) {
   const [selectedCity, setSelectedCity] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [excludeEaten, setExcludeEaten] = useState(true)
-  const [result, setResult] = useState<Food | null>(null)
+  const [excludeVisited, setExcludeVisited] = useState(true)
+  const [result, setResult] = useState<Food | Place | null>(null)
   const [isSpinning, setIsSpinning] = useState(false)
 
-  const cities = useMemo(() => [...new Set(foods.map((f) => f.city).filter(Boolean))] as string[], [foods])
-  const allTags = useMemo(() => foods.flatMap((f) => f.tags ?? []).filter(Boolean), [foods])
+  const items = itemType === 'food' ? foods : places
+  const cities = useMemo(() => [...new Set(items.map((f) => f.city).filter(Boolean))] as string[], [items])
+  const allTags = useMemo(() => items.flatMap((f) => f.tags ?? []).filter(Boolean), [items])
   const uniqueTags = useMemo(() => [...new Set(allTags)], [allTags])
 
   function toggleTag(tag: string) {
@@ -26,7 +29,7 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
   }
 
   async function handlePick() {
-    if (foods.length === 0) return
+    if (items.length === 0) return
 
     setIsSpinning(true)
     setResult(null)
@@ -34,7 +37,7 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
     let count = 0
     const maxCount = 20
     const interval = setInterval(() => {
-      const temp = foods[Math.floor(Math.random() * foods.length)]
+      const temp = items[Math.floor(Math.random() * items.length)]
       setResult(temp)
       count++
       if (count >= maxCount) {
@@ -42,12 +45,18 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
         const options = {
           city: selectedCity || undefined,
           tags: selectedTags.length > 0 ? selectedTags : undefined,
-          excludeEaten: excludeEaten || undefined,
+          excludeVisited: excludeVisited || undefined,
         }
-        const final = pickRandom(foods, options)
+        let final: Food | Place | null
+        if (itemType === 'food') {
+          final = pickRandomFood(foods, options)
+        } else {
+          final = pickRandomPlace(places, options)
+        }
         setResult(final)
         setIsSpinning(false)
-        if (final) onRecordHistory(final, selectedCity, selectedTags)      }
+        if (final) onRecordHistory(final, selectedCity, selectedTags)
+      }
     }, 80)
   }
 
@@ -98,16 +107,18 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">排除已吃过的</span>
+          <span className="text-sm text-gray-600">
+            {itemType === 'food' ? '排除已吃过的' : '排除已去过的'}
+          </span>
           <button
-            onClick={() => setExcludeEaten(!excludeEaten)}
+            onClick={() => setExcludeVisited(!excludeVisited)}
             className={`relative w-11 h-6 rounded-full transition-colors ${
-              excludeEaten ? 'bg-orange-500' : 'bg-gray-300'
+              excludeVisited ? 'bg-orange-500' : 'bg-gray-300'
             }`}
           >
             <span
               className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                excludeEaten ? 'translate-x-5' : ''
+                excludeVisited ? 'translate-x-5' : ''
               }`}
             />
           </button>
@@ -117,11 +128,11 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
       {/* 随机按钮 */}
       <button
         onClick={handlePick}
-        disabled={isSpinning || foods.length === 0}
+        disabled={isSpinning || items.length === 0}
         className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white py-4 rounded-2xl font-bold text-lg hover:from-orange-600 hover:to-amber-600 disabled:opacity-50 transition-all shadow-lg shadow-orange-200 flex items-center justify-center gap-2"
       >
         <Sparkles size={24} />
-        {isSpinning ? '随机中...' : '随机选一道'}
+        {isSpinning ? '随机中...' : `随机选一个${itemType === 'food' ? '美食' : '好玩'}`}
       </button>
 
       {/* 结果展示 */}
@@ -148,10 +159,8 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
             </p>
           )}
           <div className="flex items-center justify-center gap-4 mt-3">
-            {result.price && (
-              <span className="text-sm text-gray-600 flex items-center gap-1">
-                <DollarSign size={14} /> ¥{result.price}
-              </span>
+            {itemType === 'food' && (result as Food).price && (
+              <span className="text-sm text-gray-600">¥{(result as Food).price}</span>
             )}
             {result.rating && (
               <span className="text-sm text-yellow-500">
@@ -181,9 +190,14 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
               >
                 换一个
               </button>
-              {result.is_eaten && (
+              {itemType === 'food' && (result as Food).is_eaten && (
                 <span className="text-xs text-green-600 flex items-center gap-1 px-2">
-                  <Check size={14} /> 已吃过
+                  ✅ 已吃过
+                </span>
+              )}
+              {itemType !== 'food' && (result as Place).is_visited && (
+                <span className="text-xs text-blue-600 flex items-center gap-1 px-2">
+                  📍 已去过
                 </span>
               )}
             </div>
@@ -192,15 +206,15 @@ export default function RandomPicker({ foods, onRecordHistory }: RandomPickerPro
       )}
 
       {/* 无数据提示 */}
-      {foods.length === 0 && (
+      {items.length === 0 && (
         <div className="mt-8 text-center text-gray-400">
-          <p className="text-4xl mb-2">🍽️</p>
-          <p className="text-sm">还没有收藏任何美食</p>
+          <p className="text-4xl mb-2">{itemType === 'food' ? '🍽️' : '🎡'}</p>
+          <p className="text-sm">还没有收藏任何{itemType === 'food' ? '美食' : '好玩'}</p>
         </div>
       )}
 
       {/* 无匹配数据提示 */}
-      {foods.length > 0 && result === null && !isSpinning && (
+      {items.length > 0 && result === null && !isSpinning && (
         <div className="mt-4 text-center text-gray-400 text-sm">
           当前筛选条件下没有可选项
         </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Food, FoodInsert } from '@/types/db'
+import type { Food, Place, FoodInsert, PlaceInsert } from '@/types/db'
 
 export function useAuth() {
   const [loading, setLoading] = useState(false)
@@ -30,6 +30,7 @@ export function useFoods() {
     const { data, error } = await supabase
       .from('foods')
       .select('*')
+      .eq('type', 'food')
       .order('created_at', { ascending: false })
     setLoading(false)
     if (error) {
@@ -45,6 +46,7 @@ export function useFoods() {
 
     const { error } = await supabase.from('foods').insert({
       ...insert,
+      type: 'food',
       user_id: session.user.id,
     } as Food)
     if (!error) await fetchFoods()
@@ -64,6 +66,55 @@ export function useFoods() {
   }
 
   return { foods, loading, error, fetchFoods, addFood, updateFood, deleteFood }
+}
+
+export function usePlaces() {
+  const [places, setPlaces] = useState<Place[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function fetchPlaces() {
+    setLoading(true)
+    setError(null)
+    const { data, error } = await supabase
+      .from('foods')
+      .select('*')
+      .eq('type', 'place')
+      .order('created_at', { ascending: false })
+    setLoading(false)
+    if (error) {
+      setError(error.message)
+    } else {
+      setPlaces(data ?? [])
+    }
+  }
+
+  async function addPlace(insert: PlaceInsert) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+
+    const { error } = await supabase.from('foods').insert({
+      ...insert,
+      type: 'place',
+      user_id: session.user.id,
+    } as Place)
+    if (!error) await fetchPlaces()
+    return error
+  }
+
+  async function updatePlace(id: string, updates: Partial<Place>) {
+    const { error } = await supabase.from('foods').update(updates).eq('id', id)
+    if (!error) await fetchPlaces()
+    return error
+  }
+
+  async function deletePlace(id: string) {
+    const { error } = await supabase.from('foods').delete().eq('id', id)
+    if (!error) await fetchPlaces()
+    return error
+  }
+
+  return { places, loading, error, fetchPlaces, addPlace, updatePlace, deletePlace }
 }
 
 export function useHistory() {
@@ -93,7 +144,7 @@ export function useHistory() {
       .from('random_history')
       .select(`
         *,
-        foods!inner (name, city, rating, tags)
+        foods!inner (name, city, rating, tags, type)
       `)
       .order('created_at', { ascending: false })
       .limit(50)

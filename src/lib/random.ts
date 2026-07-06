@@ -1,74 +1,80 @@
 /**
  * 加权随机算法
- * 使用指数权重（2^rating），评分越高的食物被选中的概率越大
- * 5星食物的权重是1星的16倍，但不是100%被选中
+ * 支持美食（Food）和好玩地点（Place）
+ * 使用指数权重（2^rating），评分越高的被选中的概率越大
  */
-import type { Food } from '@/types/db'
+import type { Food, Place } from '@/types/db'
 
 export interface RandomOptions {
   city?: string
   tags?: string[]
-  minPrice?: number
-  maxPrice?: number
-  excludeEaten?: boolean
+  excludeVisited?: boolean  // 排除已去过/已吃过
 }
 
 /**
- * 过滤候选食物
+ * 过滤候选美食
  */
-function filterFoods(foods: Food[], options: RandomOptions): Food[] {
+export function filterFoods(foods: Food[], options: RandomOptions): Food[] {
   return foods.filter((food) => {
-    if (options.excludeEaten && food.is_eaten) return false
+    if (options.excludeVisited && food.is_eaten) return false
     if (options.city && food.city !== options.city) return false
     if (options.tags && options.tags.length > 0) {
-      if (!food.tags || food.tags.some((tag) => options.tags!.includes(tag))) {
-        // 有标签筛选时：如果食物有任一匹配的标签则保留
-        // 如果没有标签字段，则跳过
-        if (!food.tags) return false
-      } else {
-        return false
-      }
+      if (!food.tags) return false
+      if (!food.tags.some((tag) => options.tags!.includes(tag))) return false
     }
-    if (options.minPrice != null && (food.price ?? 0) < options.minPrice) return false
-    if (options.maxPrice != null && (food.price ?? 0) > options.maxPrice) return false
     return true
   })
 }
 
 /**
- * 指数加权随机选择
+ * 过滤候选好玩地点
  */
-export function pickRandom(foods: Food[], options: RandomOptions = {}): Food | null {
+export function filterPlaces(places: Place[], options: RandomOptions): Place[] {
+  return places.filter((place) => {
+    if (options.excludeVisited && place.is_visited) return false
+    if (options.city && place.city !== options.city) return false
+    if (options.tags && options.tags.length > 0) {
+      if (!place.tags) return false
+      if (!place.tags.some((tag) => options.tags!.includes(tag))) return false
+    }
+    return true
+  })
+}
+
+/**
+ * 指数加权随机选择美食
+ */
+export function pickRandomFood(foods: Food[], options: RandomOptions = {}): Food | null {
   const candidates = filterFoods(foods, options)
+  return weightedPick(candidates)
+}
 
-  if (candidates.length === 0) return null
-  if (candidates.length === 1) return candidates[0]
+/**
+ * 指数加权随机选择好玩地点
+ */
+export function pickRandomPlace(places: Place[], options: RandomOptions = {}): Place | null {
+  const candidates = filterPlaces(places, options)
+  return weightedPick(candidates)
+}
 
-  // 指数权重：2^(rating-1)，rating 1~5 对应权重 1,2,4,8,16
-  const totalWeight = candidates.reduce(
-    (sum, food) => sum + Math.pow(2, (food.rating ?? 1) - 1),
+/**
+ * 通用指数加权随机
+ */
+function weightedPick<T extends { rating: number | null }>(items: T[]): T | null {
+  if (items.length === 0) return null
+  if (items.length === 1) return items[0]
+
+  const totalWeight = items.reduce(
+    (sum, item) => sum + Math.pow(2, (item.rating ?? 1) - 1),
     0,
   )
 
   let random = Math.random() * totalWeight
-  for (const food of candidates) {
-    const weight = Math.pow(2, (food.rating ?? 1) - 1)
+  for (const item of items) {
+    const weight = Math.pow(2, (item.rating ?? 1) - 1)
     random -= weight
-    if (random <= 0) return food
+    if (random <= 0) return item
   }
 
-  // 浮点误差兜底
-  return candidates[candidates.length - 1]
-}
-
-/**
- * 计算权重分布（用于调试/展示）
- */
-export function getWeightDistribution(foods: Food[]): Record<number, number> {
-  const dist: Record<number, number> = {}
-  for (let i = 1; i <= 5; i++) {
-    const totalWeight = foods.filter((f) => f.rating === i).reduce((sum, __) => sum + Math.pow(2, i - 1), 0)
-    dist[i] = totalWeight
-  }
-  return dist
+  return items[items.length - 1]
 }
