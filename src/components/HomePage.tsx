@@ -89,7 +89,7 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
       {/* 顶部导航 */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="text-lg font-bold text-gray-900">🍜 美食收藏</h1>
+          <h1 className="text-lg font-bold text-gray-900">🍜 美食与游玩地收藏</h1>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowHistory(!showHistory)}
