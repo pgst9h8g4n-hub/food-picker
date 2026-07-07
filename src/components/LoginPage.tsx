@@ -23,7 +23,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
         <div className="text-center mb-8">
           <div className="text-4xl mb-2">🍜</div>
-          <h1 className="text-2xl font-bold text-gray-900">美食收藏</h1>
+          <h1 className="text-2xl font-bold text-gray-900">美食与游玩地收藏</h1>
           <p className="text-gray-500 text-sm mt-1">登录以继续</p>
         </div>
 
