@@ -7,6 +7,7 @@ import type { Food, Place } from '@/types/db'
 
 export interface RandomOptions {
   city?: string
+  region?: string
   tags?: string[]
   excludeVisited?: boolean  // 排除已去过/已吃过
 }
@@ -18,6 +19,7 @@ export function filterFoods(foods: Food[], options: RandomOptions): Food[] {
   return foods.filter((food) => {
     if (options.excludeVisited && food.is_eaten) return false
     if (options.city && food.city !== options.city) return false
+    if (options.region && food.region !== options.region) return false
     if (options.tags && options.tags.length > 0) {
       if (!food.tags) return false
       if (!food.tags.some((tag) => options.tags!.includes(tag))) return false
@@ -33,6 +35,7 @@ export function filterPlaces(places: Place[], options: RandomOptions): Place[] {
   return places.filter((place) => {
     if (options.excludeVisited && place.is_visited) return false
     if (options.city && place.city !== options.city) return false
+    if (options.region && place.region !== options.region) return false
     if (options.tags && options.tags.length > 0) {
       if (!place.tags) return false
       if (!place.tags.some((tag) => options.tags!.includes(tag))) return false

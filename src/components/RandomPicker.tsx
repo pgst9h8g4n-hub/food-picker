@@ -12,6 +12,7 @@ interface RandomPickerProps {
 
 export default function RandomPicker({ foods, places, onRecordHistory, itemType }: RandomPickerProps) {
   const [selectedCity, setSelectedCity] = useState('')
+  const [selectedRegion, setSelectedRegion] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [excludeVisited, setExcludeVisited] = useState(true)
   const [result, setResult] = useState<Food | Place | null>(null)
@@ -19,6 +20,7 @@ export default function RandomPicker({ foods, places, onRecordHistory, itemType 
 
   const items = itemType === 'food' ? foods : places
   const cities = useMemo(() => [...new Set(items.map((f) => f.city).filter(Boolean))] as string[], [items])
+  const regions = useMemo(() => [...new Set(items.map((f) => f.region).filter(Boolean))] as string[], [items])
   const allTags = useMemo(() => items.flatMap((f) => f.tags ?? []).filter(Boolean), [items])
   const uniqueTags = useMemo(() => [...new Set(allTags)], [allTags])
 
@@ -44,6 +46,7 @@ export default function RandomPicker({ foods, places, onRecordHistory, itemType 
         clearInterval(interval)
         const options = {
           city: selectedCity || undefined,
+          region: selectedRegion || undefined,
           tags: selectedTags.length > 0 ? selectedTags : undefined,
           excludeVisited: excludeVisited || undefined,
         }
@@ -78,6 +81,22 @@ export default function RandomPicker({ foods, places, onRecordHistory, itemType 
             <option value="">全部城市</option>
             {cities.map((city) => (
               <option key={city} value={city}>{city}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mb-3">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
+            <MapPin size={14} /> 区域
+          </label>
+          <select
+            value={selectedRegion}
+            onChange={(e) => setSelectedRegion(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          >
+            <option value="">全部区域</option>
+            {regions.map((region) => (
+              <option key={region} value={region}>{region}</option>
             ))}
           </select>
         </div>
