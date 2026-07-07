@@ -78,10 +78,6 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  async function handleRecordHistory(item: Food | Place, city?: string, tags?: string[]) {
-    await recordHistory(item as Food, city, tags)
-  }
-
   const loading = activeItemType === 'food' ? foodsLoading : placesLoading
   const error = activeItemType === 'food' ? foodsError : placesError
   const items = activeItemType === 'food' ? foods : places
