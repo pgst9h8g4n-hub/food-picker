@@ -73,8 +73,11 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
 
   async function handleDelete(id: string) {
     if (confirm('确定删除这个项目吗？')) {
-      await deleteFood(id)
-      await deletePlace(id)
+      if (activeItemType === 'food') {
+        await deleteFood(id)
+      } else {
+        await deletePlace(id)
+      }
     }
   }
 
