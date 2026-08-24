@@ -1,32 +1,44 @@
-# React + TypeScript + Vite
+# 美食收藏与随机选择 🍜
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+两个吃货的收藏与随机挑选工具。记录发现的美食和好玩的地方，需要的时候随机选一个。
 
-Currently, two official plugins are available:
+## 功能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- 🍜 美食收藏：记录店名、地址、城市、标签、价格、评分等
+- 🎡 游玩地收藏：记录好玩地点
+- 🎲 随机挑选：支持按城市、区域、标签筛选后随机选择
+- 📋 链接解析：粘贴小红书/抖音/美团链接，自动提取店名和地址
+- 🔄 历史记录：记录每次随机结果
 
-## React Compiler
+## 数据存储
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+当前版本使用浏览器本地存储（localStorage），数据保存在本机浏览器中。
+如需多设备同步，可升级到 Railway + Turso 云端方案。
 
-## Expanding the Oxlint configuration
+## 本地运行
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## 部署
+
+### GitHub Pages（推荐）
+
+项目已配置自动部署，每次推送到 main 分支会自动构建并部署。
+
+部署地址：https://pgst9h8g4n-hub.github.io/food-picker/
+
+### 手动部署
+
+```bash
+npm run build
+# 将 dist/ 目录上传到 GitHub Pages
+```
+
+## 技术栈
+
+- Vite + React + TypeScript
+- TailwindCSS 4
+- GitHub Pages 托管

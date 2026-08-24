@@ -223,7 +223,7 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
           foods={foods}
           places={places}
           onRecordHistory={async (item, city, tags) => {
-            await recordHistory(item as Food, city, tags)
+            await recordHistory(item.id, city, tags)
           }}
           itemType={activeItemType}
         />

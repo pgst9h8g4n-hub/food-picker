@@ -1,20 +1,15 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 import LoginPage from '@/components/LoginPage'
 import HomePage from '@/components/HomePage'
+import { isLoggedIn as checkLoggedIn } from '@/lib/auth'
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(false)
+  const [loggedIn, setLoggedIn] = useState(checkLoggedIn())
   const [checking, setChecking] = useState(true)
 
-  // 检查登录状态
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setLoggedIn(!!session)
-      setChecking(false)
-    })
-
-    return () => subscription.unsubscribe()
+    setLoggedIn(checkLoggedIn())
+    setChecking(false)
   }, [])
 
   if (checking) {

@@ -1,22 +1,57 @@
-import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useState, useEffect } from 'react'
 import type { Food, Place, FoodInsert, PlaceInsert } from '@/types/db'
+import {
+  fetchFoods,
+  addFood as storageAddFood,
+  updateFood as storageUpdateFood,
+  deleteFood as storageDeleteFood,
+  fetchPlaces,
+  addPlace as storageAddPlace,
+  updatePlace as storageUpdatePlace,
+  deletePlace as storageDeletePlace,
+  recordHistory as storageRecordHistory,
+  fetchHistory as storageFetchHistory,
+  type HistoryRecord,
+} from '@/lib/storage'
+import { isLoggedIn, login, logout, needsSetup as authNeedsSetup, setupPassword } from '@/lib/auth'
 
 export function useAuth() {
   const [loading, setLoading] = useState(false)
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [needsSetup, setNeedsSetup] = useState(false)
 
-  async function signIn(email: string, password: string) {
+  useEffect(() => {
+    setLoggedIn(isLoggedIn())
+    setNeedsSetup(authNeedsSetup())
+  }, [])
+
+  async function signIn(password: string) {
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const ok = login(password)
     setLoading(false)
-    return error
+    if (ok) {
+      setLoggedIn(true)
+      setNeedsSetup(false)
+    }
+    return ok ? null : new Error('密码错误')
+  }
+
+  async function signUp(password: string) {
+    setLoading(true)
+    setupPassword(password)
+    login(password)
+    setLoading(false)
+    setLoggedIn(true)
+    setNeedsSetup(false)
+    return null
   }
 
   async function signOut() {
-    await supabase.auth.signOut()
+    logout()
+    setLoggedIn(false)
   }
 
-  return { signIn, signOut, loading }
+  return { signIn, signUp, signOut, loading, loggedIn, needsSetup }
 }
 
 export function useFoods() {
@@ -24,48 +59,45 @@ export function useFoods() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function fetchFoods() {
+  async function fetchFoodsFn() {
     setLoading(true)
     setError(null)
-    const { data, error } = await supabase
-      .from('foods')
-      .select('*')
-      .eq('type', 'food')
-      .order('created_at', { ascending: false })
+    const data = fetchFoods()
     setLoading(false)
-    if (error) {
-      setError(error.message)
-    } else {
-      setFoods(data ?? [])
-    }
+    setFoods(data)
   }
 
   async function addFood(insert: FoodInsert) {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-
-    const { error } = await supabase.from('foods').insert({
-      ...insert,
-      type: 'food',
-      user_id: session.user.id,
-    } as Food)
-    if (!error) await fetchFoods()
-    return error
+    try {
+      const food = storageAddFood(insert)
+      if (food) await fetchFoodsFn()
+      return null
+    } catch (e) {
+      return new Error(e instanceof Error ? e.message : '添加失败')
+    }
   }
 
   async function updateFood(id: string, updates: Partial<Food>) {
-    const { error } = await supabase.from('foods').update(updates).eq('id', id)
-    if (!error) await fetchFoods()
-    return error
+    try {
+      const food = storageUpdateFood(id, updates)
+      if (food) await fetchFoodsFn()
+      return null
+    } catch (e) {
+      return new Error(e instanceof Error ? e.message : '更新失败')
+    }
   }
 
   async function deleteFood(id: string) {
-    const { error } = await supabase.from('foods').delete().eq('id', id)
-    if (!error) await fetchFoods()
-    return error
+    try {
+      const ok = storageDeleteFood(id)
+      if (ok) await fetchFoodsFn()
+      return null
+    } catch (e) {
+      return new Error(e instanceof Error ? e.message : '删除失败')
+    }
   }
 
-  return { foods, loading, error, fetchFoods, addFood, updateFood, deleteFood }
+  return { foods, loading, error, fetchFoods: fetchFoodsFn, addFood, updateFood, deleteFood }
 }
 
 export function usePlaces() {
@@ -73,83 +105,61 @@ export function usePlaces() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function fetchPlaces() {
+  async function fetchPlacesFn() {
     setLoading(true)
     setError(null)
-    const { data, error } = await supabase
-      .from('foods')
-      .select('*')
-      .eq('type', 'place')
-      .order('created_at', { ascending: false })
+    const data = fetchPlaces()
     setLoading(false)
-    if (error) {
-      setError(error.message)
-    } else {
-      setPlaces(data ?? [])
-    }
+    setPlaces(data)
   }
 
   async function addPlace(insert: PlaceInsert) {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-
-    const { error } = await supabase.from('foods').insert({
-      ...insert,
-      type: 'place',
-      user_id: session.user.id,
-    } as Place)
-    if (!error) await fetchPlaces()
-    return error
+    try {
+      const place = storageAddPlace(insert)
+      if (place) await fetchPlacesFn()
+      return null
+    } catch (e) {
+      return new Error(e instanceof Error ? e.message : '添加失败')
+    }
   }
 
   async function updatePlace(id: string, updates: Partial<Place>) {
-    const { error } = await supabase.from('foods').update(updates).eq('id', id)
-    if (!error) await fetchPlaces()
-    return error
+    try {
+      const place = storageUpdatePlace(id, updates)
+      if (place) await fetchPlacesFn()
+      return null
+    } catch (e) {
+      return new Error(e instanceof Error ? e.message : '更新失败')
+    }
   }
 
   async function deletePlace(id: string) {
-    const { error } = await supabase.from('foods').delete().eq('id', id)
-    if (!error) await fetchPlaces()
-    return error
+    try {
+      const ok = storageDeletePlace(id)
+      if (ok) await fetchPlacesFn()
+      return null
+    } catch (e) {
+      return new Error(e instanceof Error ? e.message : '删除失败')
+    }
   }
 
-  return { places, loading, error, fetchPlaces, addPlace, updatePlace, deletePlace }
+  return { places, loading, error, fetchPlaces: fetchPlacesFn, addPlace, updatePlace, deletePlace }
 }
 
 export function useHistory() {
-  const [history, setHistory] = useState<any[]>([])
+  const [history, setHistory] = useState<HistoryRecord[]>([])
   const [loading, setLoading] = useState(false)
 
-  async function record(food: Food, filterCity?: string, filterTags?: string[]) {
+  async function record(foodId: string, filterCity?: string, filterTags?: string[]) {
     setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-
-    const { error } = await supabase.from('random_history').insert({
-      user_id: session.user.id,
-      food_id: food.id,
-      filter_city: filterCity || null,
-      filter_tags: filterTags || null,
-    })
-
-    if (!error) {
-      await fetchHistory()
-    }
+    storageRecordHistory(foodId, filterCity, filterTags)
+    await fetchHistory()
     setLoading(false)
   }
 
   async function fetchHistory() {
-    const { data } = await supabase
-      .from('random_history')
-      .select(`
-        *,
-        foods!inner (name, city, rating, tags, type)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(50)
-
-    if (data) setHistory(data)
+    const data = storageFetchHistory()
+    setHistory(data)
   }
 
   return { history, loading, record, fetchHistory }
