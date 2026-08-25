@@ -14,15 +14,25 @@ import {
   type HistoryRecord,
 } from '@/lib/storage'
 import { isLoggedIn, login, logout, needsSetup as authNeedsSetup, setupPassword } from '@/lib/auth'
+import {
+  isSyncEnabled,
+  getGithubToken,
+  syncData,
+  clearGithubToken,
+} from '@/lib/gist-sync'
+import { exportAllData, importAllData } from '@/lib/storage'
 
 export function useAuth() {
   const [loading, setLoading] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [needsSetup, setNeedsSetup] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<'connected' | 'disconnected' | null>(null)
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     setLoggedIn(isLoggedIn())
     setNeedsSetup(authNeedsSetup())
+    setSyncStatus(getGithubToken() ? 'connected' : 'disconnected')
   }, [])
 
   async function signIn(password: string) {
@@ -32,6 +42,8 @@ export function useAuth() {
     if (ok) {
       setLoggedIn(true)
       setNeedsSetup(false)
+      // 登录成功后自动同步
+      await autoSync(password)
     }
     return ok ? null : new Error('密码错误')
   }
@@ -43,6 +55,8 @@ export function useAuth() {
     setLoading(false)
     setLoggedIn(true)
     setNeedsSetup(false)
+    // 创建账号后自动同步
+    await autoSync(password)
     return null
   }
 
@@ -51,7 +65,48 @@ export function useAuth() {
     setLoggedIn(false)
   }
 
-  return { signIn, signUp, signOut, loading, loggedIn, needsSetup }
+  async function autoSync(password: string) {
+    if (!getGithubToken() || !isSyncEnabled()) return
+    setSyncing(true)
+    try {
+      const localData = exportAllData()
+      const merged = await syncData(password, localData)
+      importAllData(merged)
+      setSyncStatus('connected')
+    } catch (e) {
+      console.warn('同步失败:', e)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function forceSync(password: string) {
+    if (!getGithubToken()) {
+      setSyncStatus(null)
+      return false
+    }
+    setSyncing(true)
+    try {
+      const localData = exportAllData()
+      const merged = await syncData(password, localData)
+      importAllData(merged)
+      setSyncStatus('connected')
+      return true
+    } catch (e) {
+      console.warn('同步失败:', e)
+      setSyncStatus('disconnected')
+      return false
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  function disconnectGithub() {
+    clearGithubToken()
+    setSyncStatus(null)
+  }
+
+  return { signIn, signUp, signOut, loading, loggedIn, needsSetup, syncStatus, syncing, forceSync, disconnectGithub }
 }
 
 export function useFoods() {

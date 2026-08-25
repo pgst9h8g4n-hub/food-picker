@@ -12,6 +12,22 @@ function now() {
   return new Date().toISOString()
 }
 
+// 数据导出（用于同步）
+export function exportAllData(): { foods: Food[]; places: Place[]; history: any[] } {
+  return {
+    foods: loadFood(),
+    places: loadPlace(),
+    history: loadHistory(),
+  }
+}
+
+// 数据导入（从云端合并）
+export function importAllData(data: { foods?: Food[]; places?: Place[]; history?: any[] }): void {
+  if (data.foods) saveFoods(data.foods)
+  if (data.places) savePlaces(data.places)
+  if (data.history) saveHistory(data.history)
+}
+
 // 数据加载
 function loadFood(): Food[] {
   try {

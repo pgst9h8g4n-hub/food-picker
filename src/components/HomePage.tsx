@@ -15,7 +15,7 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingItem, setEditingItem] = useState<Food | Place | null>(null)
   const [showHistory, setShowHistory] = useState(false)
-  const { signOut } = useAuth()
+  const { signOut, syncStatus, syncing, forceSync, disconnectGithub } = useAuth()
   const { foods, loading: foodsLoading, error: foodsError, fetchFoods, addFood, updateFood, deleteFood } = useFoods()
   const { places, loading: placesLoading, error: placesError, fetchPlaces, addPlace, updatePlace, deletePlace } = usePlaces()
   const { history, record: recordHistory, fetchHistory } = useHistory()
@@ -94,6 +94,30 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
         <div className="flex items-center justify-between px-4 py-3">
           <h1 className="text-lg font-bold text-gray-900">🍜 美食与游玩地收藏</h1>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const password = localStorage.getItem('food_picker_password')
+                if (password) {
+                  forceSync(password).then((ok) => {
+                    if (!ok) alert('同步失败，请检查 GitHub Token')
+                  })
+                }
+              }}
+              disabled={syncing || syncStatus !== 'connected'}
+              className="text-sm text-gray-500 flex items-center gap-1 hover:text-gray-700 disabled:opacity-50"
+              title="手动同步"
+            >
+              {syncing ? '⏳' : syncStatus === 'connected' ? '🔄' : '☁️'} 同步
+            </button>
+            {syncStatus === 'connected' && (
+              <button
+                onClick={disconnectGithub}
+                className="text-xs text-gray-400 hover:text-red-500"
+                title="断开同步"
+              >
+                ✕
+              </button>
+            )}
             <button
               onClick={() => setShowHistory(!showHistory)}
               className="text-sm text-gray-500 flex items-center gap-1 hover:text-gray-700"

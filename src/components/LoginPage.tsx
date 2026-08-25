@@ -1,10 +1,17 @@
 import { useState } from 'react'
 import { useAuth } from '@/lib/hooks'
+import { connectGithub } from '@/lib/gist-sync'
 
-export default function LoginPage({ onLogin }: { onLogin: () => void }) {
+interface LoginPageProps {
+  onLogin: () => void
+}
+
+export default function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
+  const [githubToken, setGithubToken] = useState('')
+  const [githubStatus, setGithubStatus] = useState<'connected' | 'connecting' | null>(null)
   const { signIn, signUp, loading } = useAuth()
 
   async function handleSubmit(e: React.FormEvent) {
@@ -19,6 +26,16 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
       setError(err.message)
     } else {
       onLogin()
+    }
+  }
+
+  async function handleGithubConnect() {
+    if (!githubToken.trim()) return
+    setGithubStatus('connecting')
+    const result = await connectGithub(githubToken.trim())
+    setGithubStatus(result.success ? 'connected' : null)
+    if (!result.success) {
+      setError(result.message)
     }
   }
 
@@ -56,13 +73,34 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
             disabled={loading}
             className="w-full bg-orange-500 text-white py-2.5 rounded-lg font-medium hover:bg-orange-600 disabled:opacity-50 transition-colors"
           >
-            {loading
-              ? '处理中...'
-              : isSignUp
-              ? '创建账号'
-              : '登录'}
+            {loading ? '处理中...' : isSignUp ? '创建账号' : '登录'}
           </button>
         </form>
+
+        {/* GitHub 同步 */}
+        <div className="mt-6 pt-6 border-t">
+          <p className="text-xs text-gray-500 mb-2">多设备同步（可选）</p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={githubToken}
+              onChange={(e) => setGithubToken(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              placeholder="GitHub PAT (gist 权限)"
+            />
+            <button
+              type="button"
+              onClick={handleGithubConnect}
+              disabled={githubStatus === 'connecting'}
+              className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-600 transition-colors"
+            >
+              {githubStatus === 'connecting' ? '...' : githubStatus === 'connected' ? '✓' : '连接'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            {githubStatus === 'connected' ? '已连接 GitHub' : '获取 PAT: GitHub → Settings → Developer settings → Personal access tokens'}
+          </p>
+        </div>
 
         <div className="mt-6 text-center">
           <button
@@ -78,7 +116,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
         </div>
 
         <p className="mt-6 text-xs text-center text-gray-400">
-          密码仅保存在本机，换设备需重新设置
+          密码仅保存在本机
         </p>
       </div>
     </div>
