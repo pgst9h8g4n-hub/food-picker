@@ -291,22 +291,25 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {history.map((item: any) => (
-                    <div key={item.id} className="bg-gray-50 rounded-xl p-3">
-                      <p className="font-medium text-gray-900">{item.foods?.name || '未知'}</p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        {item.foods?.city && (
-                          <span>{item.foods.city}</span>
-                        )}
-                        {item.foods?.rating && (
-                          <span className="text-yellow-500">
-                            {'★'.repeat(item.foods.rating)}{'☆'.repeat(5 - item.foods.rating)}
-                          </span>
-                        )}
-                        <span>{new Date(item.created_at).toLocaleString('zh-CN')}</span>
+                  {history.map((item: any) => {
+                    const food = foods.find(f => f.id === item.food_id)
+                    return (
+                      <div key={item.id} className="bg-gray-50 rounded-xl p-3">
+                        <p className="font-medium text-gray-900">{food?.name || item.food_id}</p>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                          {food?.city && (
+                            <span>{food.city}</span>
+                          )}
+                          {food?.rating && (
+                            <span className="text-yellow-500">
+                              {'★'.repeat(food.rating)}{'☆'.repeat(5 - food.rating)}
+                            </span>
+                          )}
+                          <span>{new Date(item.created_at).toLocaleString('zh-CN')}</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

@@ -192,16 +192,90 @@ export async function connectGithub(token: string): Promise<{ success: boolean; 
   }
 }
 
-// 同步数据
+// 智能合并数据 - 基于 ID 和时间戳的数组合并
+function mergeArrays<T extends { id: string; updated_at?: string; created_at?: string }>(
+  local: T[],
+  remote: T[],
+): T[] {
+  const localMap = new Map(local.map(item => [item.id, item]))
+  const remoteMap = new Map(remote.map(item => [item.id, item]))
+
+  // 先放入本地的所有项
+  localMap.forEach((item, id) => {
+    const remoteItem = remoteMap.get(id)
+    if (remoteItem) {
+      // 两者都有，比较时间戳，保留更新的
+      const localTime = item.updated_at || item.created_at || ''
+      const remoteTime = remoteItem.updated_at || remoteItem.created_at || ''
+      if (remoteTime > localTime) {
+        localMap.set(id, remoteItem)
+      }
+    }
+  })
+
+  // 只存在于远程的项直接添加
+  remoteMap.forEach((item, id) => {
+    if (!localMap.has(id)) {
+      localMap.set(id, item)
+    }
+  })
+
+  return Array.from(localMap.values())
+}
+
+// 同步数据 - 智能合并策略
 export async function syncData(password: string, localData: Record<string, any>): Promise<Record<string, any>> {
   const remoteData = await fetchFromGist(password)
 
   if (remoteData) {
-    const merged = { ...remoteData, ...localData }
+    // 智能合并：基于 ID 和时间戳
+    const merged = {
+      ...remoteData,
+      ...localData,
+    }
+
+    // 数组合并：美食列表
+    if (localData.foods && remoteData.foods) {
+      merged.foods = mergeArrays(localData.foods, remoteData.foods)
+    }
+
+    // 数组合并：游玩地列表
+    if (localData.places && remoteData.places) {
+      merged.places = mergeArrays(localData.places, remoteData.places)
+    }
+
+    // 数组合并：历史记录（保留最新的）
+    if (localData.history && remoteData.history) {
+      // 历史记录按时间排序，本地优先保留最近 N 条，然后合并远程的
+      const localHistory = Array.isArray(localData.history) ? localData.history : []
+      const remoteHistory = Array.isArray(remoteData.history) ? remoteData.history : []
+      // 合并去重（基于 id）
+      const historyMap = new Map<string, any>()
+      localHistory.forEach(h => historyMap.set(h.id, h))
+      remoteHistory.forEach(h => {
+        if (!historyMap.has(h.id)) {
+          historyMap.set(h.id, h)
+        }
+      })
+      // 按时间排序，保留最新的 100 条
+      const mergedHistory = Array.from(historyMap.values())
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 100)
+      merged.history = mergedHistory
+    }
+
+    // 只更新有改动的时间戳
+    merged.updated_at = new Date().toISOString()
+
     await saveToGist(password, merged)
     return merged
   } else {
-    await createGist(password, localData)
+    // 远程无数据，创建新的 Gist
+    const dataWithTimestamp = {
+      ...localData,
+      updated_at: new Date().toISOString(),
+    }
+    await createGist(password, dataWithTimestamp)
     return localData
   }
 }
