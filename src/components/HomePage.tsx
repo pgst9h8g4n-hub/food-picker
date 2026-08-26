@@ -4,6 +4,7 @@ import { useAuth, useFoods, useHistory, usePlaces } from '@/lib/hooks'
 import ItemCard from '@/components/FoodCard'
 import AddItemForm from '@/components/AddFoodForm'
 import RandomPicker from '@/components/RandomPicker'
+import PWAInstallBanner from '@/components/PWAInstallBanner'
 import type { Food, Place, FoodInsert, PlaceInsert } from '@/types/db'
 
 type MainTab = 'collection' | 'picker'
@@ -89,6 +90,7 @@ export default function HomePage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      <PWAInstallBanner />
       {/* 顶部导航 */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="flex items-center justify-between px-4 py-3">

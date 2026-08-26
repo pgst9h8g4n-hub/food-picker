@@ -1,0 +1,24 @@
+{
+  "name": "美食收藏与随机选择",
+  "short_name": "美食收藏",
+  "description": "与伴侣共享的美食和游玩地点收藏工具，支持随机挑选",
+  "start_url": "/food-picker/",
+  "display": "standalone",
+  "background_color": "#fff7ed",
+  "theme_color": "#fb923c",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/food-picker/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/food-picker/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
