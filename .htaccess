@@ -1,0 +1,14 @@
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType text/css "access plus 1 hour"
+  ExpiresByType application/javascript "access plus 1 hour"
+  ExpiresByType image/png "access plus 1 year"
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header set Cache-Control "public, max-age=31536000"
+  Header set Cache-Control "public, max-age=31536000", paths-match "*.css"
+  Header set Cache-Control "public, max-age=31536000", paths-match "*.js"
+  Header set Cache-Control "public, max-age=31536000", paths-match "*.png"
+</IfModule>
