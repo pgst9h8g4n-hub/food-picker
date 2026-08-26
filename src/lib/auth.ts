@@ -1,11 +1,12 @@
 /**
  * 简单本地密码认证
- * 密码以 bcrypt 哈希形式存储在 localStorage
- * 首次登录时创建密码，之后可直接用密码登录
+ * 使用固定盐值（从应用名派生），使多设备可以互相验证密码
  */
 
 const PASSWORD_KEY = 'food_picker_password'
-const SALT_KEY = 'food_picker_salt'
+
+// 固定盐值：从应用标识派生，确保多设备一致
+const APP_SALT = 'food-picker-multi-device-salt-v1'
 
 // 简单的本地密码验证（不使用外部库，用简单哈希）
 function simpleHash(str: string): string {
@@ -18,19 +19,18 @@ function simpleHash(str: string): string {
   return hash.toString(36)
 }
 
+// 注册新用户：创建密码（使用固定盐值）
 export function setupPassword(password: string): boolean {
-  const salt = Math.random().toString(36).slice(2)
-  const hash = simpleHash(salt + password)
+  const hash = simpleHash(APP_SALT + password)
   localStorage.setItem(PASSWORD_KEY, hash)
-  localStorage.setItem(SALT_KEY, salt)
   return true
 }
 
+// 验证密码（使用相同固定盐值）
 export function verifyPassword(password: string): boolean {
   const storedHash = localStorage.getItem(PASSWORD_KEY)
-  const salt = localStorage.getItem(SALT_KEY)
-  if (!storedHash || !salt) return false
-  const hash = simpleHash(salt + password)
+  if (!storedHash) return false
+  const hash = simpleHash(APP_SALT + password)
   return hash === storedHash
 }
 
