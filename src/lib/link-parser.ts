@@ -1,11 +1,7 @@
 /**
  * 链接解析器 - 纯前端实现
  *
- * 由于国内网络限制，无法使用 Jina Reader 等外部服务。
- * 本方案采用以下策略：
- * 1. 从 URL 中提取可解析的信息（店号、城市等）
- * 2. 生成导航链接（高德/百度地图）
- * 3. 从剪贴板文本中提取结构化信息
+ * 支持从剪贴板读取抖音/小红书/美团链接并提取信息。
  */
 
 export interface ParsedPlace {
@@ -16,6 +12,7 @@ export interface ParsedPlace {
   price: number | null
   source: string
   platform: string
+  rawText: string  // 原始剪贴板文本
 }
 
 // 平台检测
@@ -31,10 +28,8 @@ function detectPlatform(url: string): { platform: string; domain: string } {
 
 // 从大众点评/美团链接中提取店铺信息
 function parseDianpingMeituan(url: string): ParsedPlace | null {
-  // 大众点评: /shop/xxx-xxx 或 /shop/xxx/
   const shopMatch = url.match(/\/shop\/([^/]+)/)
   if (shopMatch) {
-    // 尝试从 URL 中提取城市
     const cityMatch = url.match(/\/([^/]+?)\/shop\//)
     const city = cityMatch ? cityMatch[1] : null
     return {
@@ -45,6 +40,7 @@ function parseDianpingMeituan(url: string): ParsedPlace | null {
       price: null,
       source: '大众点评',
       platform: '大众点评',
+      rawText: url,
     }
   }
   return null
@@ -62,6 +58,7 @@ function parseDouyin(url: string): ParsedPlace | null {
       price: null,
       source: '抖音',
       platform: '抖音',
+      rawText: url,
     }
   }
   return null
@@ -79,6 +76,7 @@ function parseXiaohongshu(url: string): ParsedPlace | null {
       price: null,
       source: '小红书',
       platform: '小红书',
+      rawText: url,
     }
   }
   return null
@@ -102,20 +100,10 @@ export function parseUrlInfo(url: string): ParsedPlace | null {
 
 /**
  * 生成地图导航链接
- * 支持高德地图和百度地图
  */
 export function generateMapLink(title: string, address?: string): string {
   const keyword = address ? `${title} ${address}` : title
-  // 高德地图
   return `https://uri.amap.com/search?keyword=${encodeURIComponent(keyword)}&callnative=1`
-}
-
-/**
- * 生成百度地图导航链接
- */
-export function generateBaiduMapLink(title: string, address?: string): string {
-  const keyword = address ? `${title} ${address}` : title
-  return `https://map.baidu.com/search/${encodeURIComponent(keyword)}`
 }
 
 /**
@@ -129,6 +117,10 @@ export function extractShopName(text: string): string | null {
   // 大众点评/美团格式
   const match2 = text.match(/(?:店名|店铺|餐厅|餐馆)[:：\s]+(.{2,30})(?:\s|$|[【]])/)
   if (match2) return match2[1].trim()
+
+  // 抖音/小红书分享文案常见格式
+  const match3 = text.match(/推荐[\s]{0,2}【?([^【\n]{2,30})】?/)
+  if (match3) return match3[1].trim()
 
   // 纯文本首行（去掉常见前缀）
   const firstLine = text.split('\n')[0]?.trim()
@@ -191,4 +183,95 @@ export function extractRating(text: string): number | null {
     if (rating >= 1 && rating <= 5) return rating
   }
   return null
+}
+
+/**
+ * 从文本中尝试提取价格
+ */
+export function extractPrice(text: string): number | null {
+  const match = text.match(/¥?\s*(\d{2,4})\s*元/)
+  if (match) {
+    const price = parseInt(match[1])
+    if (price >= 10 && price <= 2000) return price
+  }
+  return null
+}
+
+/**
+ * 检测剪贴板内容是否为支持的链接或分享文本
+ */
+export function detectClipboardContent(text: string): {
+  isLink: boolean
+  platform: string
+  parsed?: ParsedPlace
+} {
+  const trimmed = text.trim()
+
+  // 检查是否是 URL
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('www.')) {
+    const parsed = parseUrlInfo(trimmed)
+    const { platform } = detectPlatform(trimmed)
+    return {
+      isLink: true,
+      platform,
+      parsed: parsed || {
+        title: '',
+        address: null,
+        city: null,
+        rating: null,
+        price: null,
+        source: platform,
+        platform,
+        rawText: trimmed,
+      },
+    }
+  }
+
+  // 检查是否是分享文本（包含链接）
+  const linkMatch = trimmed.match(/https?:\/\/[^\s]+/i)
+  if (linkMatch) {
+    const url = linkMatch[0]
+    const parsed = parseUrlInfo(url)
+    const { platform } = detectPlatform(url)
+    return {
+      isLink: true,
+      platform,
+      parsed: parsed || {
+        title: '',
+        address: null,
+        city: null,
+        rating: null,
+        price: null,
+        source: platform,
+        platform,
+        rawText: trimmed,
+      },
+    }
+  }
+
+  // 普通分享文本 - 尝试提取信息
+  const shopName = extractShopName(trimmed)
+  const address = extractAddress(trimmed)
+  const city = extractCity(trimmed)
+  const rating = extractRating(trimmed)
+  const price = extractPrice(trimmed)
+
+  if (shopName || address || city) {
+    return {
+      isLink: false,
+      platform: '分享文本',
+      parsed: {
+        title: shopName || '',
+        address,
+        city,
+        rating,
+        price,
+        source: '分享文本',
+        platform: '分享文本',
+        rawText: trimmed,
+      },
+    }
+  }
+
+  return { isLink: false, platform: '其他' }
 }

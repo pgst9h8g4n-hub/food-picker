@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { X, ClipboardPaste } from 'lucide-react'
 import type { Food, Place, FoodInsert, PlaceInsert, ItemType } from '@/types/db'
-import { parseUrlInfo, extractShopName, extractAddress } from '@/lib/link-parser'
+import { detectClipboardContent, extractShopName, extractAddress } from '@/lib/link-parser'
 import type { ParsedPlace } from '@/lib/link-parser'
 
 interface AddItemFormProps {
@@ -42,6 +42,7 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
   const [parsedInfo, setParsedInfo] = useState<ParsedPlace | null>(null)
+  const [hasPendingClipboard, setHasPendingClipboard] = useState(false)
   const [isEaten, setIsEaten] = useState(false)
   const [isVisited, setIsVisited] = useState(false)
 
@@ -81,22 +82,32 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
     async function checkClipboard() {
       try {
         const text = await navigator.clipboard.readText()
-        if (!text) return
-        if (isSupportedLink(text)) {
-          setLink(text)
-        } else {
-          const shopName = extractShopName(text)
-          if (shopName) {
-            setName(shopName)
-            setCopyText(text)
-          }
+        if (!text || text.trim().length < 3) return
+
+        const result = detectClipboardContent(text)
+
+        if (result.isLink) {
+          // 检测到链接
+          setLink(text.trim())
+          setParsedInfo(result.parsed ?? null)
+          setSource(result.parsed?.source ?? null)
+          setHasPendingClipboard(true)
+          // 如果有城市信息，自动填入
+          if (result.parsed?.city && !city) setCity(result.parsed.city)
+        } else if (result.parsed?.title) {
+          // 检测到分享文本
+          setName(result.parsed.title)
+          setCopyText(text)
+          if (result.parsed.address && !address) setAddress(result.parsed.address)
+          if (result.parsed.city && !city) setCity(result.parsed.city)
         }
       } catch {
-        // 剪贴板权限被拒绝
+        // 剪贴板权限被拒绝或不可用
       }
     }
 
-    const timer = setTimeout(checkClipboard, 500)
+    // 延迟检测，给页面加载时间
+    const timer = setTimeout(checkClipboard, 800)
     return () => clearTimeout(timer)
   }, [initialData])
 
@@ -106,13 +117,15 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
     setLinkLoading(true)
     setLinkError(null)
     try {
-      const result = parseUrlInfo(url.trim())
-      if (result) {
-        setParsedInfo(result)
-        setSource(result.source)
+      const result = detectClipboardContent(url.trim())
+      if (result.parsed) {
+        setParsedInfo(result.parsed)
+        setSource(result.parsed.source)
         setLinkError(null)
         // 如果有城市信息，自动填入
-        if (result.city && !city) setCity(result.city)
+        if (result.parsed.city && !city) setCity(result.parsed.city)
+        // 如果有标题，自动填入
+        if (result.parsed.title && !name) setName(result.parsed.title)
       } else {
         setParsedInfo(null)
         setLinkError('暂无法从此链接提取信息，请手动填写或粘贴推荐文案')
@@ -141,6 +154,32 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
   function handleManualParse() {
     if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
     doParseLink(link)
+  }
+
+  async function handlePasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text || text.trim().length < 3) return
+
+      const result = detectClipboardContent(text.trim())
+      setHasPendingClipboard(false)
+
+      if (result.isLink && result.parsed) {
+        setLink(result.parsed.rawText)
+        setParsedInfo(result.parsed)
+        setSource(result.parsed.source)
+        if (result.parsed.city && !city) setCity(result.parsed.city)
+        if (result.parsed.title && !name) setName(result.parsed.title)
+      } else if (result.parsed?.title) {
+        setName(result.parsed.title)
+        setCopyText(text)
+        if (result.parsed.address && !address) setAddress(result.parsed.address)
+        if (result.parsed.city && !city) setCity(result.parsed.city)
+        if (result.parsed.rating) setRating(result.parsed.rating.toString())
+      }
+    } catch {
+      // 剪贴板权限被拒绝
+    }
   }
 
   function handleCopyTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -352,16 +391,26 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
 
           {/* 链接智能识别 */}
           <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              🔗 来源链接（可选）
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-medium text-gray-700">
+                🔗 来源链接（可选）
+              </label>
+              <button
+                type="button"
+                onClick={handlePasteFromClipboard}
+                className="text-xs text-purple-600 hover:text-purple-700 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-purple-50 transition-colors"
+              >
+                <ClipboardPaste size={12} />
+                粘贴剪贴板
+              </button>
+            </div>
             <div className="flex gap-2">
               <input
                 type="url"
                 value={link}
                 onChange={handleLinkChange}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                placeholder="粘贴小红书/抖音/美团链接"
+                placeholder="小红书/抖音/美团链接"
               />
               <button
                 type="button"
@@ -378,26 +427,64 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
             {parsedInfo && (
               <div className="mt-2 p-3 bg-purple-50 rounded-lg border border-purple-100">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-purple-700">{parsedInfo.platform}</span>
+                  <span className="text-xs font-medium text-purple-700">
+                    {parsedInfo.platform === '分享文本' ? '📋 检测到分享信息' : `🔗 ${parsedInfo.platform}链接`}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setParsedInfo(null)}
                     className="text-purple-400 hover:text-purple-600 text-xs"
                   >
-                    清除
+                    ✕
                   </button>
                 </div>
-                {parsedInfo.city && (
-                  <p className="text-xs text-purple-600 mt-1">
-                    📍 检测到城市：{parsedInfo.city}
+                {parsedInfo.title && (
+                  <p className="text-sm font-medium text-gray-800 mt-1">
+                    {parsedInfo.title}
                   </p>
                 )}
-                <p className="text-xs text-gray-500 mt-1">
-                  请补充店名和地址后提交
-                </p>
+                {parsedInfo.city && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    📍 城市：{parsedInfo.city}
+                  </p>
+                )}
+                {parsedInfo.address && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    🏠 地址：{parsedInfo.address}
+                  </p>
+                )}
+                {parsedInfo.price && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    💰 参考价：¥{parsedInfo.price}
+                  </p>
+                )}
+                {parsedInfo.rating && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    ⭐ 评分：{parsedInfo.rating}星
+                  </p>
+                )}
+                {parsedInfo.rawText && !parsedInfo.title && (
+                  <p className="text-xs text-gray-500 mt-1 truncate">
+                    {parsedInfo.rawText.length > 50 ? parsedInfo.rawText.slice(0, 50) + '...' : parsedInfo.rawText}
+                  </p>
+                )}
               </div>
             )}
           </div>
+
+          {/* 一键粘贴提示 - 当剪贴板有待处理内容时显示 */}
+          {hasPendingClipboard && !name && !link && (
+            <div className="border-t pt-4">
+              <button
+                type="button"
+                onClick={handlePasteFromClipboard}
+                className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:from-orange-600 hover:to-amber-600 transition-all"
+              >
+                <ClipboardPaste size={18} />
+                粘贴并识别分享信息
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"
