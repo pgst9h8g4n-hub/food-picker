@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import type { Food, Place, FoodInsert, PlaceInsert, ItemType } from '@/types/db'
+import { parseUrlInfo, extractShopName, extractAddress } from '@/lib/link-parser'
+import type { ParsedPlace } from '@/lib/link-parser'
 
 interface AddItemFormProps {
   onSubmit: (item: FoodInsert | PlaceInsert) => void | Promise<void>
@@ -25,32 +27,6 @@ function isSupportedLink(text: string): boolean {
   return LINK_PATTERNS.some((p) => p.test(text))
 }
 
-/**
- * 从推荐文案中提取店名
- */
-function extractShopName(text: string): string | null {
-  const match1 = text.match(/【([^】]+?)】/)
-  if (match1) return match1[1].trim()
-  const match2 = text.match(/(?:店名|店铺|餐厅|餐馆)[:：\s]+(.{2,30})(?:\s|$|[【])/)
-  if (match2) return match2[1].trim()
-  const match3 = text.match(/^[一-鿿〇〇]{2,30}/)
-  if (match3 && match3[0].length >= 2) return match3[0].trim()
-  return null
-}
-
-/**
- * 从推荐文案中提取地址
- */
-function extractAddress(text: string): string | null {
-  const match1 = text.match(/【(?:地址)[:：\s]*(.{2,50})】/)
-  if (match1) return match1[1].trim()
-  const match2 = text.match(/(?:地址)[:：\s]+(.{2,50})(?:\s|$|[【])/)
-  if (match2) return match2[1].trim()
-  const match3 = text.match(/((?:[一-龥]+)(?:路|街|大道|巷|弄|号|栋|楼)[^\s【】]{0,30})/)
-  if (match3 && match3[1].length >= 4) return match3[1].trim()
-  return null
-}
-
 export default function AddItemForm({ onSubmit, onClose, initialData, itemType }: AddItemFormProps) {
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
@@ -65,8 +41,9 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
   const [source, setSource] = useState<string | null>(null)
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
-  const [isEaten, setIsEaten] = useState(false)       // 美食：是否已吃过
-  const [isVisited, setIsVisited] = useState(false)    // 好玩：是否去过
+  const [parsedInfo, setParsedInfo] = useState<ParsedPlace | null>(null)
+  const [isEaten, setIsEaten] = useState(false)
+  const [isVisited, setIsVisited] = useState(false)
 
   const parseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -123,34 +100,27 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
     return () => clearTimeout(timer)
   }, [initialData])
 
-  // 解析链接
+  // 解析链接 - 从 URL 提取信息
   async function doParseLink(url: string) {
     if (!url.trim()) return
     setLinkLoading(true)
     setLinkError(null)
     try {
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/parse-link`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
-      })
-      const result = await resp.json()
-      if (result.error) {
-        setLinkError(result.error)
-      } else if (result.parsed?.title) {
-        setName(result.parsed.title)
-        setSource(result.parsed.platform)
-      } else if (result.parsed?.platform) {
-        setSource(result.parsed.platform)
+      const result = parseUrlInfo(url.trim())
+      if (result) {
+        setParsedInfo(result)
+        setSource(result.source)
         setLinkError(null)
+        // 如果有城市信息，自动填入
+        if (result.city && !city) setCity(result.city)
       } else {
-        setLinkError(null)
+        setParsedInfo(null)
+        setLinkError('暂无法从此链接提取信息，请手动填写或粘贴推荐文案')
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '识别失败'
       console.warn('[AddItemForm] 链接解析失败:', msg)
-      setLinkError(null)
+      setLinkError('解析失败')
     }
     setLinkLoading(false)
   }
@@ -158,9 +128,11 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
   function handleLinkChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newLink = e.target.value
     setLink(newLink)
+    setParsedInfo(null)
     if (parseTimerRef.current) clearTimeout(parseTimerRef.current)
     if (newLink.trim() && isSupportedLink(newLink)) {
-      parseTimerRef.current = setTimeout(() => doParseLink(newLink), 1500)
+      // 自动解析，无需手动点击
+      parseTimerRef.current = setTimeout(() => doParseLink(newLink), 800)
     } else {
       setLinkLoading(false)
     }
@@ -401,6 +373,30 @@ export default function AddItemForm({ onSubmit, onClose, initialData, itemType }
               </button>
             </div>
             {linkError && <p className="text-xs text-red-500 mt-1">{linkError}</p>}
+
+            {/* 解析结果提示 */}
+            {parsedInfo && (
+              <div className="mt-2 p-3 bg-purple-50 rounded-lg border border-purple-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-purple-700">{parsedInfo.platform}</span>
+                  <button
+                    type="button"
+                    onClick={() => setParsedInfo(null)}
+                    className="text-purple-400 hover:text-purple-600 text-xs"
+                  >
+                    清除
+                  </button>
+                </div>
+                {parsedInfo.city && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    📍 检测到城市：{parsedInfo.city}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  请补充店名和地址后提交
+                </p>
+              </div>
+            )}
           </div>
 
           <button
