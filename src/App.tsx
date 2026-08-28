@@ -2,14 +2,20 @@ import { useState, useEffect } from 'react'
 import LoginPage from '@/components/LoginPage'
 import HomePage from '@/components/HomePage'
 import { isLoggedIn as checkLoggedIn } from '@/lib/auth'
+import { ErrorBoundary } from '@/ErrorBoundary'
 
 function App() {
   const [loggedIn, setLoggedIn] = useState(checkLoggedIn())
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    setLoggedIn(checkLoggedIn())
-    setChecking(false)
+    try {
+      setLoggedIn(checkLoggedIn())
+    } catch (error) {
+      console.error('Failed to check login status:', error)
+    } finally {
+      setChecking(false)
+    }
   }, [])
 
   if (checking) {
@@ -27,4 +33,10 @@ function App() {
   return <HomePage onLogout={() => setLoggedIn(false)} />
 }
 
-export default App
+export default function WrappedApp() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  )
+}
